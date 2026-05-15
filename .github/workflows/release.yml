@@ -1,6 +1,6 @@
 name: Release
 
-# Срабатывает только при пуше тега вида v1.0.0, v1.2.3 и т.д.
+# Triggered only by pushing a tag like v1.0.0, v1.2.3, etc.
 on:
   push:
     tags:
@@ -11,7 +11,7 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # ── 1. Проверка качества (те же чеки что и в CI) ───────────────────────────
+  # ── 1. Quality checks (same as the CI workflow) ────────────────────────────
   ci:
     name: CI checks
     runs-on: ubuntu-latest
@@ -34,17 +34,17 @@ jobs:
       - run: cargo clippy -- -D warnings
       - run: cargo fmt --check
 
-  # ── 2. Сборка релизных бинарников ──────────────────────────────────────────
+  # ── 2. Build release binaries ──────────────────────────────────────────────
   #
-  # Четыре платформы собираются параллельно и независимо.
-  # Каждый job загружает свой архив как GitHub Actions artifact,
-  # который финальный job "publish" потом прикрепляет к Release.
+  # The four platforms are built in parallel and independently.
+  # Each job uploads its archive as a GitHub Actions artifact,
+  # which the final "publish" job then attaches to the Release.
   #
-  # Маппинг runner → target:
-  #   ubuntu-latest  → x86_64-unknown-linux-gnu  (нативно)
-  #   macos-latest   → x86_64-apple-darwin        (ARM runner, кросс-компиляция)
-  #   macos-latest   → aarch64-apple-darwin        (Apple Silicon runner, нативно)
-  #   windows-latest → x86_64-pc-windows-msvc      (нативно)
+  # runner → target mapping:
+  #   ubuntu-latest  → x86_64-unknown-linux-gnu  (native)
+  #   macos-latest   → x86_64-apple-darwin       (ARM runner, cross-compiled)
+  #   macos-latest   → aarch64-apple-darwin      (Apple Silicon runner, native)
+  #   windows-latest → x86_64-pc-windows-msvc    (native)
   build:
     name: Build · ${{ matrix.target }}
     needs: ci
@@ -90,11 +90,11 @@ jobs:
           restore-keys: |
             ${{ matrix.target }}-cargo-
 
-      # Сборка релизного бинарника (оптимизированный, stripped)
+      # Build the release binary (optimized, stripped)
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      # Упаковка для Unix (tar.gz)
+      # Package for Unix (tar.gz)
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -102,7 +102,7 @@ jobs:
           tar czf "${{ matrix.archive }}" ${{ matrix.binary }}
           mv "${{ matrix.archive }}" "${{ github.workspace }}/"
 
-      # Упаковка для Windows (zip)
+      # Package for Windows (zip)
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -110,7 +110,7 @@ jobs:
           cd target/${{ matrix.target }}/release
           Compress-Archive -Path ${{ matrix.binary }} -DestinationPath "${{ github.workspace }}/${{ matrix.archive }}"
 
-      # Загружаем архив как артефакт — publish job его скачает
+      # Upload the archive as an artifact — the publish job downloads it
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -119,43 +119,51 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # ── 3. Создание GitHub Release и прикрепление бинарников ───────────────────
+  # ── 3. Create the GitHub Release and attach the binaries ───────────────────
   publish:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # нужно для создания Release
+      contents: write   # required to create the Release
 
     steps:
       - uses: actions/checkout@v4
 
-      # Скачиваем все 4 архива из предыдущих jobs
+      # Download all four archives from the previous jobs
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      # Проверяем что все файлы на месте
+      # Make sure all files are present
       - name: List artifacts
         run: ls -lh artifacts/
 
-      # Извлекаем блок текущего релиза из CHANGELOG.md
-      # (от первого "## [X.Y.Z]" до следующего "## [")
+      # Generate SHA256SUMS with bare filenames so the in-app updater can
+      # verify a downloaded archive against its checksum.
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum omny-* > SHA256SUMS
+          cat SHA256SUMS
+
+      # Extract the current release block from CHANGELOG.md: from the
+      # "## X.Y.Z" heading down to the next "## " heading or "---" rule.
       - name: Extract changelog entry
         id: changelog
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"   # убираем "v" из тега
-          BODY=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
-          # Передаём многострочный текст через GITHUB_OUTPUT
+          VERSION="${GITHUB_REF_NAME#v}"   # strip the leading "v" from the tag
+          BODY=$(awk "/^## ${VERSION} /{found=1; next} found && (/^## /||/^---\$/){exit} found{print}" CHANGELOG.md)
+          # Pass the multi-line text through GITHUB_OUTPUT
           {
             echo 'body<<CHANGELOG_EOF'
             echo "$BODY"
             echo 'CHANGELOG_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      # Создаём Release и прикрепляем все бинарники одним шагом
+      # Create the Release and attach all binaries in one step
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -169,3 +177,4 @@ jobs:
             artifacts/omny-x86_64-apple-darwin.tar.gz
             artifacts/omny-aarch64-apple-darwin.tar.gz
             artifacts/omny-x86_64-pc-windows-msvc.zip
+            artifacts/SHA256SUMS

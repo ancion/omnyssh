@@ -7,8 +7,8 @@ use ratatui::{
 };
 
 use crate::app::{
-    FormField, HostForm, SnippetForm, SnippetResultEntry, FORM_FIELD_LABELS,
-    SNIPPET_FORM_FIELD_LABELS,
+    FormField, HostForm, SnippetForm, SnippetResultEntry, UpdateButton, UpdatePopup,
+    UpdatePopupPhase, FORM_FIELD_LABELS, SNIPPET_FORM_FIELD_LABELS, UPDATE_BUTTONS,
 };
 use crate::ssh::client::Host;
 use crate::ui::theme::Theme;
@@ -1576,4 +1576,188 @@ pub fn render_key_setup_progress(
             hint_row,
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Update popup
+// ---------------------------------------------------------------------------
+
+/// Label shown on an update-popup button.
+fn update_button_label(button: UpdateButton, can_self_update: bool) -> &'static str {
+    match button {
+        UpdateButton::Primary if can_self_update => "Update now",
+        UpdateButton::Primary => "Remind me later",
+        UpdateButton::Skip => "Skip this version",
+        UpdateButton::Disable => "Don't check again",
+    }
+}
+
+/// Renders the startup "update available" popup.
+pub fn render_update(frame: &mut Frame, popup: &UpdatePopup, theme: &Theme) {
+    let area = centred_rect(62, 42, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Update Available ")
+        .title_alignment(Alignment::Center)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.accent));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Reserve the last two rows for the action buttons and the hint.
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    // ── Body text ──────────────────────────────────────────────
+    let mut lines: Vec<Line> = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Version  ", Style::default().fg(theme.text_secondary)),
+            Span::styled(
+                popup.info.current.clone(),
+                Style::default().fg(theme.text_muted),
+            ),
+            Span::styled("  →  ", Style::default().fg(theme.text_secondary)),
+            Span::styled(
+                popup.info.latest.clone(),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+    ];
+
+    let info_style = Style::default().fg(theme.text_primary);
+    let emphasis_style = Style::default()
+        .fg(theme.text_warning)
+        .add_modifier(Modifier::BOLD);
+
+    match &popup.phase {
+        UpdatePopupPhase::Prompt { .. } => {
+            if popup.info.can_self_update {
+                lines.push(Line::from(Span::styled(
+                    "  This update can be downloaded and installed now.",
+                    info_style,
+                )));
+                lines.push(Line::from(Span::styled(
+                    "  The archive checksum is verified before installing.",
+                    Style::default().fg(theme.text_muted),
+                )));
+            } else if let Some(cmd) = popup.info.method.upgrade_command() {
+                lines.push(Line::from(Span::styled(
+                    "  Update it with your package manager:",
+                    info_style,
+                )));
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    format!("    {cmd}"),
+                    emphasis_style,
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    "  Download the new release from:",
+                    info_style,
+                )));
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", popup.info.release_url()),
+                    emphasis_style,
+                )));
+            }
+        }
+        UpdatePopupPhase::Installing => {
+            let spinner = SPINNER_FRAMES[(frame.count() / 2) % SPINNER_FRAMES.len()];
+            lines.push(Line::from(Span::styled(
+                format!("  {spinner} Downloading and installing — please wait…"),
+                Style::default().fg(theme.text_warning),
+            )));
+        }
+        UpdatePopupPhase::Done { message, ok } => {
+            let color = if *ok {
+                theme.text_success
+            } else {
+                theme.text_error
+            };
+            for line in message.lines() {
+                lines.push(Line::from(Span::styled(
+                    format!("  {line}"),
+                    Style::default().fg(color),
+                )));
+            }
+        }
+    }
+
+    frame.render_widget(Paragraph::new(lines), rows[0]);
+
+    // ── Action row ─────────────────────────────────────────────
+    if let UpdatePopupPhase::Prompt { selected } = &popup.phase {
+        let mut spans: Vec<Span> = vec![Span::raw("  ")];
+        for (i, &button) in UPDATE_BUTTONS.iter().enumerate() {
+            let label = update_button_label(button, popup.info.can_self_update);
+            let style = if i == *selected {
+                Style::default()
+                    .fg(theme.form_focused_fg)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.text_secondary)
+            };
+            spans.push(Span::styled(format!(" {label} "), style));
+            spans.push(Span::raw("  "));
+        }
+        frame.render_widget(Paragraph::new(Line::from(spans)), rows[1]);
+    }
+
+    // ── Hint row ───────────────────────────────────────────────
+    let hint = match &popup.phase {
+        UpdatePopupPhase::Prompt { .. } => Line::from(vec![
+            Span::styled(
+                "  ←/→",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":select  ", Style::default().fg(theme.text_muted)),
+            Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(theme.text_success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":confirm  ", Style::default().fg(theme.text_muted)),
+            Span::styled(
+                "Esc",
+                Style::default()
+                    .fg(theme.text_warning)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":dismiss", Style::default().fg(theme.text_muted)),
+        ]),
+        UpdatePopupPhase::Installing => Line::from(Span::styled(
+            "  Please wait…",
+            Style::default()
+                .fg(theme.text_muted)
+                .add_modifier(Modifier::ITALIC),
+        )),
+        UpdatePopupPhase::Done { .. } => Line::from(vec![
+            Span::styled(
+                "  Enter / Esc",
+                Style::default()
+                    .fg(theme.text_warning)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":close", Style::default().fg(theme.text_muted)),
+        ]),
+    };
+    frame.render_widget(Paragraph::new(hint), rows[2]);
 }

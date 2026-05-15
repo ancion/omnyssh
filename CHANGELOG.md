@@ -7,6 +7,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## 1.0.2 — 2026-05-15
+
+### Features
+- **Automatic update checks**: On startup OmnySSH checks GitHub Releases for a newer version and shows a popup when one is available. You can install the update, skip that version, or disable checks entirely. Failed or offline checks are silent and never delay startup.
+- **In-app self-update**: For manual / `install.sh` installs on Linux and macOS, an update can be downloaded and installed from within the app — the release archive is verified against its SHA-256 checksum before the binary is replaced. Homebrew, Cargo, and Nix installs instead show the matching upgrade command.
+
+### Other
+- Release archives are now published alongside a `SHA256SUMS` checksum file.
+
+---
+
 ## 1.0.1 — 2026-04-22
 
 ### Bug Fixes

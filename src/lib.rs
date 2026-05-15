@@ -10,4 +10,5 @@ pub mod config;
 pub mod event;
 pub mod ssh;
 pub mod ui;
+pub mod update;
 pub mod utils;

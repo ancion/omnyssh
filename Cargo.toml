@@ -1,6 +1,6 @@
 [package]
 name = "omnyssh"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 description = "TUI SSH dashboard & server manager"
 license = "Apache-2.0"
@@ -60,6 +60,14 @@ chrono = "0.4"
 # Stage 5 — PTY terminal emulator
 portable-pty = "0.9"
 vt100 = { package = "vt100-omnyssh", version = "0.15" }
+
+# Update checker — GitHub Releases query, archive extraction, self-replace
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+semver = "1"
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
+self-replace = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

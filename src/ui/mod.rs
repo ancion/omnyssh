@@ -83,4 +83,9 @@ pub fn render(frame: &mut Frame, state: &AppState, view: &ViewState) {
     if view.show_help {
         popup::render_help(frame, &view.theme);
     }
+
+    // The startup update popup sits above everything else.
+    if let Some(update_popup) = &view.update_popup {
+        popup::render_update(frame, update_popup, &view.theme);
+    }
 }

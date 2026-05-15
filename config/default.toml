@@ -18,3 +18,9 @@ connect = "Enter"
 dashboard = "F1"
 file_manager = "F2"
 snippets = "F3"
+
+[update]
+# Check GitHub Releases for a newer version on startup.
+check_on_startup = true
+# A version to skip; set automatically when you choose "Skip this version".
+skip_version = ""

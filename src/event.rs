@@ -136,6 +136,14 @@ pub enum AppEvent {
     KeySetupFailed(HostId, String),
     /// Emergency rollback was triggered (host_id, rollback_result).
     KeySetupRollback(HostId, String),
+
+    // -----------------------------------------------------------------------
+    // Update checker events
+    // -----------------------------------------------------------------------
+    /// A newer release was found on GitHub at startup.
+    UpdateAvailable(crate::update::UpdateInfo),
+    /// A self-update finished — `Ok` on success, `Err` with a message on failure.
+    UpdateInstalled(Result<(), String>),
 }
 
 // ---------------------------------------------------------------------------

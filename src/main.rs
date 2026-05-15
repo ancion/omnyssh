@@ -9,6 +9,7 @@ mod config;
 mod event;
 mod ssh;
 mod ui;
+mod update;
 mod utils;
 
 #[tokio::main]
