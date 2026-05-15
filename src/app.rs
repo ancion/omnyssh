@@ -187,7 +187,7 @@ pub enum AppAction {
     // -----------------------------------------------------------------------
     /// Open a new PTY tab for `AppState.hosts[host_idx]` and switch to Terminal screen.
     TermOpenTab(usize),
-    /// Open the host-picker popup for creating a new terminal tab (Ctrl+N).
+    /// Open the host-picker popup for creating a new terminal tab (Ctrl+T).
     TermOpenHostPicker,
     /// Navigate the host-picker cursor. `+1` = down, `-1` = up.
     TermHostPickerNav(i8),
@@ -1094,7 +1094,7 @@ pub struct TerminalView {
     pub split: Option<SplitView>,
     /// Which pane has keyboard focus when split-view is active.
     pub split_focus: SplitFocus,
-    /// Host-picker popup for creating a new tab (Ctrl+N).
+    /// Host-picker popup for creating a new tab (Ctrl+T).
     pub host_picker: Option<TermHostPicker>,
     /// When `true`, the next digit key 1–9 jumps directly to that tab.
     /// Activated by pressing Tab (which also cycles to the next tab).
@@ -2161,7 +2161,7 @@ impl App {
     fn handle_terminal_key(&mut self, key: KeyEvent) -> Option<AppAction> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
-        // Host-picker popup has priority (Ctrl+N flow).
+        // Host-picker popup has priority (Ctrl+T flow).
         if self.view.terminal_view.host_picker.is_some() {
             return ui::terminal::handle_host_picker_input(key, &mut self.view);
         }
@@ -2181,7 +2181,7 @@ impl App {
         }
 
         // ── Terminal control combos ──────────────────────────────────────────
-        // Ctrl+N      → new tab host picker
+        // Ctrl+T      → new tab host picker
         // Ctrl+W      → close active tab
         // Ctrl+\      → toggle vertical split   (byte 0x1C → Char('4')+CONTROL)
         // Ctrl+]      → toggle horizontal split (byte 0x1D → Char('5')+CONTROL)
@@ -2191,7 +2191,7 @@ impl App {
         // Ctrl+Left   → prev tab in the focused pane (wraps around)
         if ctrl {
             match key.code {
-                KeyCode::Char('n') => return Some(AppAction::TermOpenHostPicker),
+                KeyCode::Char('t') => return Some(AppAction::TermOpenHostPicker),
                 KeyCode::Char('w') => return Some(AppAction::TermCloseTab),
                 KeyCode::Char('h') => {
                     // Ctrl+H: Switch host in the focused pane (only in split mode)
@@ -2931,7 +2931,7 @@ impl App {
                     tv.split_focus = SplitFocus::Primary;
                 } else {
                     self.view.status_message = Some(
-                        "Need at least 2 tabs to split. Open another tab with Ctrl+N.".to_string(),
+                        "Need at least 2 tabs to split. Open another tab with Ctrl+T.".to_string(),
                     );
                 }
             }
@@ -2956,7 +2956,7 @@ impl App {
                     tv.split_focus = SplitFocus::Primary;
                 } else {
                     self.view.status_message = Some(
-                        "Need at least 2 tabs to split. Open another tab with Ctrl+N.".to_string(),
+                        "Need at least 2 tabs to split. Open another tab with Ctrl+T.".to_string(),
                     );
                 }
             }
