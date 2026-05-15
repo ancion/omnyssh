@@ -141,6 +141,14 @@ jobs:
       - name: List artifacts
         run: ls -lh artifacts/
 
+      # Generate SHA256SUMS with bare filenames so the in-app updater can
+      # verify a downloaded archive against its checksum.
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum omny-* > SHA256SUMS
+          cat SHA256SUMS
+
       # Извлекаем блок текущего релиза из CHANGELOG.md
       # (от первого "## [X.Y.Z]" до следующего "## [")
       - name: Extract changelog entry
@@ -169,3 +177,4 @@ jobs:
             artifacts/omny-x86_64-apple-darwin.tar.gz
             artifacts/omny-aarch64-apple-darwin.tar.gz
             artifacts/omny-x86_64-pc-windows-msvc.zip
+            artifacts/SHA256SUMS
