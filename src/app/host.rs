@@ -565,6 +565,7 @@ impl App {
             std::io::stdout(),
             crossterm::terminal::LeaveAlternateScreen,
             crate::utils::mouse::DisableMinimalMouseCapture,
+            crossterm::event::DisableBracketedPaste,
         )?;
 
         // 2. Build SSH command (ConnectTimeout=10).
@@ -585,12 +586,14 @@ impl App {
         tracing::info!("Connecting to {} via system SSH", host.name);
         let status = cmd.spawn()?.wait().await?;
 
-        // 4. Re-enter TUI mode.
+        // 4. Re-enter TUI mode. Bracketed paste is re-enabled here because the
+        // remote shell may have left it disabled when the SSH session ended.
         crossterm::terminal::enable_raw_mode()?;
         crossterm::execute!(
             std::io::stdout(),
             crossterm::terminal::EnterAlternateScreen,
             crate::utils::mouse::EnableMinimalMouseCapture,
+            crossterm::event::EnableBracketedPaste,
         )?;
         terminal.clear()?;
 

@@ -19,6 +19,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Ubuntu 22.04 compatibility**: Linux release binaries are now built against an older glibc, fixing the `version 'GLIBC_2.39' not found` error when running on Ubuntu 22.04 and similarly aged distributions.
 - **Mouse scroll inside full-screen apps fixed**: On the Terminal screen, the mouse wheel now scrolls inside `vim`, `less`, `htop`, and other alternate-screen apps. The wheel is forwarded to the foreground application — as native mouse-wheel events when it enabled mouse reporting, or as cursor-key presses otherwise. The normal screen still scrolls local scrollback.
 - **Multi-line paste into the terminal fixed**: Bracketed paste is now implemented. Pasting multi-line text into the Terminal screen no longer drops the first characters, and editors like `vim` insert it verbatim without cascading auto-indent.
+- **Bracketed paste restored after system SSH**: Connecting to a host via the system `ssh` binary no longer leaves bracketed paste disabled on return, so multi-line paste into the terminal keeps working.
 
 ### Other
 - Release archives are now published alongside a `SHA256SUMS` checksum file.
