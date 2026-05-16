@@ -22,6 +22,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Other
 - Release archives are now published alongside a `SHA256SUMS` checksum file.
+- **Internal refactor**: The oversized `app.rs` was split into focused submodules under `src/app/` (host, snippets, file manager, terminal, update, input, and action dispatch). This is a pure code reorganization with no change in behaviour.
 
 ---
 
