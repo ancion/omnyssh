@@ -22,9 +22,7 @@ pub fn encode_paste(text: &str, bracketed: bool) -> Vec<u8> {
     // Collapse CRLF and bare LF to a single CR.
     let normalized = text.replace("\r\n", "\r").replace('\n', "\r");
     // Escape-injection defense: never let the content carry its own markers.
-    let safe = normalized
-        .replace(PASTE_START, "")
-        .replace(PASTE_END, "");
+    let safe = normalized.replace(PASTE_START, "").replace(PASTE_END, "");
 
     let mut out = Vec::with_capacity(safe.len() + PASTE_START.len() + PASTE_END.len());
     if bracketed {
@@ -69,10 +67,7 @@ mod tests {
     #[test]
     fn encode_wraps_only_when_bracketed() {
         assert_eq!(encode_paste("abc", false), b"abc".to_vec());
-        assert_eq!(
-            encode_paste("abc", true),
-            b"\x1b[200~abc\x1b[201~".to_vec()
-        );
+        assert_eq!(encode_paste("abc", true), b"\x1b[200~abc\x1b[201~".to_vec());
     }
 
     #[test]
@@ -83,7 +78,10 @@ mod tests {
     #[test]
     fn encode_strips_embedded_markers() {
         let hostile = "a\x1b[201~rm -rf\x1b[200~b";
-        assert_eq!(encode_paste(hostile, true), b"\x1b[200~arm -rfb\x1b[201~".to_vec());
+        assert_eq!(
+            encode_paste(hostile, true),
+            b"\x1b[200~arm -rfb\x1b[201~".to_vec()
+        );
     }
 
     #[test]
