@@ -117,11 +117,19 @@ pub fn load_all_hosts() -> anyhow::Result<Vec<Host>> {
     }
 
     // 3. Merge: manual names take priority.
-    // Also exclude SSH config hosts that have been renamed (tracked via original_ssh_host).
+    Ok(merge_hosts(manual, ssh_hosts))
+}
+
+/// Merges manually-added hosts with hosts imported from `~/.ssh/config`.
+///
+/// Manual entries come first and take priority: an SSH-config host is dropped
+/// when a manual host already uses its name, or when a manual host records it
+/// as a renamed original (via `original_ssh_host`).
+pub(crate) fn merge_hosts(manual: Vec<Host>, ssh_hosts: Vec<Host>) -> Vec<Host> {
     let manual_names: std::collections::HashSet<String> =
         manual.iter().map(|h| h.name.clone()).collect();
 
-    // Build set of original SSH config hostnames that have been renamed
+    // Original SSH-config names of hosts that have since been renamed.
     let renamed_ssh_hosts: std::collections::HashSet<String> = manual
         .iter()
         .filter_map(|h| h.original_ssh_host.clone())
@@ -129,11 +137,182 @@ pub fn load_all_hosts() -> anyhow::Result<Vec<Host>> {
 
     let mut all = manual;
     for h in ssh_hosts {
-        // Skip if a manual host already uses this name, or if this SSH host was renamed
         if !manual_names.contains(&h.name) && !renamed_ssh_hosts.contains(&h.name) {
             all.push(h);
         }
     }
+    all
+}
 
-    Ok(all)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn host(name: &str, source: HostSource) -> Host {
+        Host {
+            name: name.to_string(),
+            source,
+            ..Host::default()
+        }
+    }
+
+    /// A manual host renamed from an SSH-config entry named `original`.
+    fn renamed(name: &str, original: &str) -> Host {
+        Host {
+            name: name.to_string(),
+            source: HostSource::Manual,
+            original_ssh_host: Some(original.to_string()),
+            ..Host::default()
+        }
+    }
+
+    fn names(hosts: &[Host]) -> Vec<&str> {
+        hosts.iter().map(|h| h.name.as_str()).collect()
+    }
+
+    // --- merge_hosts (P0.3) -----------------------------------------------
+
+    #[test]
+    fn merge_empty_both() {
+        assert!(merge_hosts(vec![], vec![]).is_empty());
+    }
+
+    #[test]
+    fn merge_manual_only() {
+        let out = merge_hosts(vec![host("a", HostSource::Manual)], vec![]);
+        assert_eq!(names(&out), ["a"]);
+    }
+
+    #[test]
+    fn merge_ssh_only() {
+        let out = merge_hosts(vec![], vec![host("a", HostSource::SshConfig)]);
+        assert_eq!(names(&out), ["a"]);
+    }
+
+    #[test]
+    fn merge_manual_listed_before_ssh() {
+        let out = merge_hosts(
+            vec![host("m", HostSource::Manual)],
+            vec![host("s", HostSource::SshConfig)],
+        );
+        assert_eq!(names(&out), ["m", "s"]);
+    }
+
+    #[test]
+    fn merge_name_collision_manual_wins() {
+        let out = merge_hosts(
+            vec![host("web", HostSource::Manual)],
+            vec![host("web", HostSource::SshConfig)],
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].source, HostSource::Manual);
+    }
+
+    #[test]
+    fn merge_renamed_ssh_host_excluded() {
+        let out = merge_hosts(
+            vec![renamed("new", "old")],
+            vec![host("old", HostSource::SshConfig)],
+        );
+        assert_eq!(names(&out), ["new"]);
+    }
+
+    #[test]
+    fn merge_renamed_and_collision_combined() {
+        // Manual "a" was renamed from ssh "b"; ssh has both "a" and "b".
+        let out = merge_hosts(
+            vec![renamed("a", "b")],
+            vec![
+                host("a", HostSource::SshConfig),
+                host("b", HostSource::SshConfig),
+            ],
+        );
+        assert_eq!(names(&out), ["a"]);
+    }
+
+    #[test]
+    fn merge_multiple_ssh_distinct_names_kept() {
+        let out = merge_hosts(
+            vec![],
+            vec![
+                host("a", HostSource::SshConfig),
+                host("b", HostSource::SshConfig),
+                host("c", HostSource::SshConfig),
+            ],
+        );
+        assert_eq!(names(&out), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn merge_rename_keeps_unrelated_ssh_host() {
+        let out = merge_hosts(
+            vec![renamed("a", "b")],
+            vec![
+                host("b", HostSource::SshConfig),
+                host("c", HostSource::SshConfig),
+            ],
+        );
+        assert_eq!(names(&out), ["a", "c"]);
+    }
+
+    // --- HostsFile serialization (P0.4) -----------------------------------
+
+    #[test]
+    fn hostsfile_roundtrip_preserves_fields() {
+        let mut h = host("web", HostSource::Manual);
+        h.hostname = "10.0.0.1".to_string();
+        h.user = "deploy".to_string();
+        h.port = 2222;
+        h.tags = vec!["prod".to_string()];
+        let toml_str = toml::to_string_pretty(&HostsFile { hosts: vec![h] }).unwrap();
+        let parsed: HostsFile = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.hosts.len(), 1);
+        let g = &parsed.hosts[0];
+        assert_eq!(g.name, "web");
+        assert_eq!(g.hostname, "10.0.0.1");
+        assert_eq!(g.user, "deploy");
+        assert_eq!(g.port, 2222);
+        assert_eq!(g.tags, vec!["prod"]);
+    }
+
+    #[test]
+    fn hostsfile_save_filter_keeps_only_manual() {
+        // Replicates the `source == Manual` filter applied by save_hosts.
+        let hosts = [
+            host("m", HostSource::Manual),
+            host("s", HostSource::SshConfig),
+        ];
+        let manual: Vec<Host> = hosts
+            .iter()
+            .filter(|h| h.source == HostSource::Manual)
+            .cloned()
+            .collect();
+        assert_eq!(names(&manual), ["m"]);
+    }
+
+    #[test]
+    fn hostsfile_empty_input_parses_to_empty() {
+        let parsed: HostsFile = toml::from_str("").unwrap();
+        assert!(parsed.hosts.is_empty());
+    }
+
+    #[test]
+    fn hostsfile_omits_none_optional_fields() {
+        let toml_str = toml::to_string_pretty(&HostsFile {
+            hosts: vec![host("a", HostSource::Manual)],
+        })
+        .unwrap();
+        assert!(!toml_str.contains("identity_file"));
+        assert!(!toml_str.contains("password"));
+    }
+
+    #[test]
+    fn hostsfile_password_survives_roundtrip() {
+        // Confirms passwords are persisted in plaintext.
+        let mut h = host("a", HostSource::Manual);
+        h.password = Some("secret".to_string());
+        let toml_str = toml::to_string_pretty(&HostsFile { hosts: vec![h] }).unwrap();
+        let parsed: HostsFile = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.hosts[0].password.as_deref(), Some("secret"));
+    }
 }
