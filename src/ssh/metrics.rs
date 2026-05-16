@@ -595,6 +595,16 @@ mod tests {
     }
 
     #[test]
+    fn test_top_processes_no_header() {
+        // The collector now suppresses the `ps` header, so every line is data.
+        let out = "12.3  4.5 firefox\n 3.0  1.1 sshd";
+        let procs = parse_top_processes(out).expect("should parse");
+        assert_eq!(procs.len(), 2);
+        assert_eq!(procs[0].name, "firefox");
+        assert_eq!(procs[1].name, "sshd");
+    }
+
+    #[test]
     fn test_top_processes_empty_returns_none() {
         assert!(parse_top_processes("").is_none());
         assert!(parse_top_processes("%CPU %MEM COMMAND\n").is_none());

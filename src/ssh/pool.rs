@@ -308,10 +308,22 @@ async fn collect_metrics(session: &SshSession, host_name: &str) -> anyhow::Resul
 ///
 /// Tries GNU `ps` (Linux) with a server-side sort first, then falls back to
 /// BSD `ps` (macOS). Returns `None` when neither variant yields usable output.
+///
+/// The whole pipeline runs in a single login shell (`$$`); its own processes
+/// (`ps`, `awk`, `head`) would otherwise pollute the snapshot — `ps` in
+/// particular reports a meaningless lifetime-average CPU% for itself. The `awk`
+/// filter drops the shell (`pid == $$`) and everything it forked
+/// (`ppid == $$`), leaving only genuine processes.
 async fn collect_top_processes(session: &SshSession) -> Option<Vec<ProcessInfo>> {
-    // Linux: GNU ps with server-side sort by CPU.
+    // Strip the two ID columns after filtering, leaving `pcpu pmem comm`.
+    const SELF_FILTER: &str =
+        r#"awk -v s=$$ '$1!=s && $2!=s {$1="";$2="";sub(/^[ \t]+/,"");print}'"#;
+
+    // Linux: GNU ps with server-side sort by CPU; empty `=` headers suppressed.
     let linux_out = session
-        .run_command("ps -eo pcpu,pmem,comm --sort=-pcpu 2>/dev/null | head -n 4")
+        .run_command(&format!(
+            "ps -eo pid=,ppid=,pcpu=,pmem=,comm= --sort=-pcpu 2>/dev/null | {SELF_FILTER} | head -n 3"
+        ))
         .await
         .unwrap_or_default();
     if let Some(procs) = parse_top_processes(&linux_out) {
@@ -319,7 +331,9 @@ async fn collect_top_processes(session: &SshSession) -> Option<Vec<ProcessInfo>>
     }
     // macOS: BSD ps sorted by CPU usage (-r).
     let macos_out = session
-        .run_command("ps -Aceo pcpu,pmem,comm -r 2>/dev/null | head -n 4")
+        .run_command(&format!(
+            "ps -Aceo pid=,ppid=,pcpu=,pmem=,comm= -r 2>/dev/null | {SELF_FILTER} | head -n 3"
+        ))
         .await
         .unwrap_or_default();
     parse_top_processes(&macos_out)
