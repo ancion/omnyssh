@@ -126,8 +126,9 @@ impl HostForm {
             if v.is_empty() {
                 22u16
             } else {
-                v.parse::<u16>()
-                    .map_err(|_| format!("Port must be a number between 1 and 65535, got '{v}'"))?
+                v.parse::<u16>().ok().filter(|&p| p != 0).ok_or_else(|| {
+                    format!("Port must be a number between 1 and 65535, got '{v}'")
+                })?
             }
         };
 
@@ -682,12 +683,11 @@ mod tests {
     }
 
     #[test]
-    fn to_host_port_zero_accepted() {
-        // Port 0 is invalid for SSH but u16 accepts it — documents a latent bug.
-        let host = host_form(["n", "h", "u", "0", "", "", "", ""])
+    fn to_host_port_zero_errs() {
+        // Port 0 is invalid for SSH; the form rejects it.
+        assert!(host_form(["n", "h", "u", "0", "", "", "", ""])
             .to_host(HostSource::Manual)
-            .unwrap();
-        assert_eq!(host.port, 0);
+            .is_err());
     }
 
     #[test]
