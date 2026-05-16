@@ -41,7 +41,7 @@ jobs:
   # which the final "publish" job then attaches to the Release.
   #
   # runner → target mapping:
-  #   ubuntu-latest  → x86_64-unknown-linux-gnu  (native)
+  #   ubuntu-22.04   → x86_64-unknown-linux-gnu  (older glibc for wider compat)
   #   macos-latest   → x86_64-apple-darwin       (ARM runner, cross-compiled)
   #   macos-latest   → aarch64-apple-darwin      (Apple Silicon runner, native)
   #   windows-latest → x86_64-pc-windows-msvc    (native)
@@ -53,8 +53,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Built on Ubuntu 22.04 (glibc 2.35) so the binary also runs on
+          # 22.04 hosts — ubuntu-latest moved to 24.04 (glibc 2.39).
           - target:  x86_64-unknown-linux-gnu
-            runner:  ubuntu-latest
+            runner:  ubuntu-22.04
             binary:  omny
             archive: omny-x86_64-unknown-linux-gnu.tar.gz
 

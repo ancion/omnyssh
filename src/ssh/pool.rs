@@ -16,11 +16,11 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::event::{AppEvent, Metrics};
+use crate::event::{AppEvent, Metrics, ProcessInfo};
 use crate::ssh::client::{ConnectionStatus, Host};
 use crate::ssh::metrics::{
     parse_cpu_proc_stat, parse_cpu_top, parse_cpu_top_macos, parse_disk_df, parse_loadavg,
-    parse_ram_free, parse_ram_vmstat, parse_uptime,
+    parse_ram_free, parse_ram_vmstat, parse_top_processes, parse_uptime,
 };
 use crate::ssh::session::SshSession;
 
@@ -290,6 +290,8 @@ async fn collect_metrics(session: &SshSession, host_name: &str) -> anyhow::Resul
 
     let load_avg = parse_loadavg(&loadavg_str);
 
+    let top_processes = collect_top_processes(session).await;
+
     Ok(Metrics {
         cpu_percent,
         ram_percent,
@@ -297,8 +299,44 @@ async fn collect_metrics(session: &SshSession, host_name: &str) -> anyhow::Resul
         uptime,
         load_avg,
         os_info: None, // OS info is collected during discovery, not metrics polling
+        top_processes,
         last_updated: Instant::now(),
     })
+}
+
+/// Collects the top 3 processes by CPU usage.
+///
+/// Tries GNU `ps` (Linux) with a server-side sort first, then falls back to
+/// BSD `ps` (macOS). Returns `None` when neither variant yields usable output.
+///
+/// The whole pipeline runs in a single login shell (`$$`); its own processes
+/// (`ps`, `awk`, `head`) would otherwise pollute the snapshot — `ps` in
+/// particular reports a meaningless lifetime-average CPU% for itself. The `awk`
+/// filter drops the shell (`pid == $$`) and everything it forked
+/// (`ppid == $$`), leaving only genuine processes.
+async fn collect_top_processes(session: &SshSession) -> Option<Vec<ProcessInfo>> {
+    // Strip the two ID columns after filtering, leaving `pcpu pmem comm`.
+    const SELF_FILTER: &str =
+        r#"awk -v s=$$ '$1!=s && $2!=s {$1="";$2="";sub(/^[ \t]+/,"");print}'"#;
+
+    // Linux: GNU ps with server-side sort by CPU; empty `=` headers suppressed.
+    let linux_out = session
+        .run_command(&format!(
+            "ps -eo pid=,ppid=,pcpu=,pmem=,comm= --sort=-pcpu 2>/dev/null | {SELF_FILTER} | head -n 3"
+        ))
+        .await
+        .unwrap_or_default();
+    if let Some(procs) = parse_top_processes(&linux_out) {
+        return Some(procs);
+    }
+    // macOS: BSD ps sorted by CPU usage (-r).
+    let macos_out = session
+        .run_command(&format!(
+            "ps -Aceo pid=,ppid=,pcpu=,pmem=,comm= -r 2>/dev/null | {SELF_FILTER} | head -n 3"
+        ))
+        .await
+        .unwrap_or_default();
+    parse_top_processes(&macos_out)
 }
 
 async fn parse_cpu_combined(top_out: &str, session: &SshSession) -> Option<f64> {

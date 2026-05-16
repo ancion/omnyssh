@@ -19,6 +19,8 @@
 
 use ratatui::style::Color;
 
+use crate::event::ProcessInfo;
+
 // ---------------------------------------------------------------------------
 // Colour threshold helper (used by card renderer)
 // ---------------------------------------------------------------------------
@@ -325,6 +327,46 @@ pub fn parse_loadavg(output: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Process list parser
+// ---------------------------------------------------------------------------
+
+/// Parse the top processes by CPU usage from `ps` output.
+///
+/// Expects lines of `%CPU %MEM COMMAND`, sorted by the remote `ps`. An optional
+/// header line and any malformed line are skipped (their first two columns are
+/// not numeric). Returns at most 3 entries in input order, or `None` if empty.
+pub fn parse_top_processes(output: &str) -> Option<Vec<ProcessInfo>> {
+    let mut procs: Vec<ProcessInfo> = Vec::new();
+    for line in output.lines() {
+        if procs.len() == 3 {
+            break;
+        }
+        let mut fields = line.split_whitespace();
+        let (Some(cpu_str), Some(mem_str)) = (fields.next(), fields.next()) else {
+            continue;
+        };
+        // The first two columns must be numeric — this skips the header row.
+        let (Ok(cpu), Ok(mem)) = (cpu_str.parse::<f64>(), mem_str.parse::<f64>()) else {
+            continue;
+        };
+        let name = fields.collect::<Vec<&str>>().join(" ");
+        if name.is_empty() {
+            continue;
+        }
+        procs.push(ProcessInfo {
+            name,
+            cpu_percent: cpu,
+            mem_percent: mem,
+        });
+    }
+    if procs.is_empty() {
+        None
+    } else {
+        Some(procs)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -498,6 +540,74 @@ mod tests {
         let out = "0.15 0.10 0.08 1/423 12345\n";
         let result = parse_loadavg(out).expect("should parse");
         assert_eq!(result, "0.15 0.10 0.08");
+    }
+
+    // ---- Top processes ----
+
+    #[test]
+    fn test_top_processes_linux() {
+        let out = "%CPU %MEM COMMAND\n\
+                   12.3  4.5 firefox\n\
+                    8.1  2.0 node\n\
+                    3.0  1.1 sshd";
+        let procs = parse_top_processes(out).expect("should parse");
+        assert_eq!(procs.len(), 3);
+        assert_eq!(procs[0].name, "firefox");
+        assert!((procs[0].cpu_percent - 12.3).abs() < 0.01);
+        assert!((procs[0].mem_percent - 4.5).abs() < 0.01);
+        assert_eq!(procs[2].name, "sshd");
+    }
+
+    #[test]
+    fn test_top_processes_macos_header() {
+        let out = "%CPU %MEM COMM\n  5.0  3.2 WindowServer";
+        let procs = parse_top_processes(out).expect("should parse");
+        assert_eq!(procs.len(), 1);
+        assert_eq!(procs[0].name, "WindowServer");
+    }
+
+    #[test]
+    fn test_top_processes_command_with_spaces() {
+        let out = "%CPU %MEM COMMAND\n 2.5  9.0 postgres: writer process";
+        let procs = parse_top_processes(out).expect("should parse");
+        assert_eq!(procs[0].name, "postgres: writer process");
+    }
+
+    #[test]
+    fn test_top_processes_skips_malformed_lines() {
+        let out = "%CPU %MEM COMMAND\n\
+                   garbage line\n\
+                   10.0  1.0 redis\n\
+                   \n\
+                   only-one-field";
+        let procs = parse_top_processes(out).expect("should parse");
+        assert_eq!(procs.len(), 1);
+        assert_eq!(procs[0].name, "redis");
+    }
+
+    #[test]
+    fn test_top_processes_caps_at_three() {
+        let out = "%CPU %MEM COMMAND\n\
+                   5.0 1.0 a\n4.0 1.0 b\n3.0 1.0 c\n2.0 1.0 d\n1.0 1.0 e";
+        let procs = parse_top_processes(out).expect("should parse");
+        assert_eq!(procs.len(), 3);
+        assert_eq!(procs[2].name, "c");
+    }
+
+    #[test]
+    fn test_top_processes_no_header() {
+        // The collector now suppresses the `ps` header, so every line is data.
+        let out = "12.3  4.5 firefox\n 3.0  1.1 sshd";
+        let procs = parse_top_processes(out).expect("should parse");
+        assert_eq!(procs.len(), 2);
+        assert_eq!(procs[0].name, "firefox");
+        assert_eq!(procs[1].name, "sshd");
+    }
+
+    #[test]
+    fn test_top_processes_empty_returns_none() {
+        assert!(parse_top_processes("").is_none());
+        assert!(parse_top_processes("%CPU %MEM COMMAND\n").is_none());
     }
 
     // ---- Threshold colour ----

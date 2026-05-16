@@ -78,17 +78,12 @@ pub async fn quick_scan(
     // Extract OS information and send via MetricsUpdate
     if let Some(os_info) = probe_output.parse_os_info() {
         use crate::event::Metrics;
-        use std::time::Instant;
 
-        // Send a partial metrics update with just OS info
+        // Send a partial metrics update with just OS info; the merge logic in
+        // the main loop preserves the other fields.
         let metrics = Metrics {
-            cpu_percent: None,
-            ram_percent: None,
-            disk_percent: None,
-            uptime: None,
-            load_avg: None,
             os_info: Some(os_info),
-            last_updated: Instant::now(),
+            ..Metrics::default()
         };
 
         tx.send(AppEvent::MetricsUpdate(host_id.clone(), metrics))

@@ -36,6 +36,9 @@ use crate::ui::theme::Theme;
 /// ║ DSK: ████████░░░░ 61%           │                          ║
 /// ║ Load: 2.4 1.8 1.2               │                          ║
 /// ╠═════════════════════════════════════════════════════════════╣
+/// ║ TOP PROCESSES                                               ║
+/// ║  1. firefox            cpu 12.3%   mem  4.5%                ║
+/// ╠═════════════════════════════════════════════════════════════╣
 /// ║ SERVICES                                                    ║
 /// ║ 🐳 Docker         8 running, 1 stopped    [containers: F4] ║
 /// ║ 🌐 Nginx          active, 0 errors/5min   [logs: F5]       ║
@@ -88,7 +91,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Layout: hints (1 line) + header (2 lines) + separator + metrics/alerts (6 lines) + separator + services (flex) + separator + actions (flex)
+    // Layout: hints (1) + header (2) + sep + metrics/alerts (6) + sep
+    // + top processes (5) + sep + services (flex) + sep + actions (flex)
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -96,6 +100,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
             Constraint::Length(2), // Header (host info + OS info)
             Constraint::Length(1), // Separator
             Constraint::Length(6), // Metrics + Alerts (2 columns)
+            Constraint::Length(1), // Separator
+            Constraint::Length(5), // Top processes
             Constraint::Length(1), // Separator
             Constraint::Min(5),    // Services section
             Constraint::Length(1), // Separator
@@ -124,23 +130,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
     // Separator
     render_separator(frame, sections[4], inner.width, &view.theme);
 
-    // Services section
-    if let Some(svcs) = services {
-        render_services(frame, sections[5], svcs, &view.theme);
-    } else {
-        frame.render_widget(
-            Paragraph::new("  SERVICES\n\n  No discovery data available. Press 'r' to refresh.")
-                .style(Style::default().fg(view.theme.text_muted)),
-            sections[5],
-        );
-    }
+    // Top processes section
+    render_top_processes(frame, sections[5], metrics, &view.theme);
 
     // Separator
     render_separator(frame, sections[6], inner.width, &view.theme);
 
+    // Services section
+    if let Some(svcs) = services {
+        render_services(frame, sections[7], svcs, &view.theme);
+    } else {
+        frame.render_widget(
+            Paragraph::new("  SERVICES\n\n  No discovery data available. Press 'r' to refresh.")
+                .style(Style::default().fg(view.theme.text_muted)),
+            sections[7],
+        );
+    }
+
+    // Separator
+    render_separator(frame, sections[8], inner.width, &view.theme);
+
     // Suggested actions
     if let Some(alts) = alerts {
-        render_suggested_actions(frame, sections[7], alts, &view.theme);
+        render_suggested_actions(frame, sections[9], alts, &view.theme);
     }
 }
 
@@ -381,6 +393,56 @@ fn render_alerts_column(frame: &mut Frame, area: Rect, alerts: Option<&[Alert]>,
 // ---------------------------------------------------------------------------
 // Services section
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Top processes section
+// ---------------------------------------------------------------------------
+
+/// Renders the "TOP PROCESSES" panel — up to 3 processes by CPU usage.
+fn render_top_processes(frame: &mut Frame, area: Rect, metrics: Option<&Metrics>, theme: &Theme) {
+    let mut lines = vec![Line::from(Span::styled(
+        " TOP PROCESSES",
+        Style::default()
+            .fg(theme.title)
+            .add_modifier(Modifier::BOLD),
+    ))];
+
+    match metrics.and_then(|m| m.top_processes.as_deref()) {
+        Some(procs) if !procs.is_empty() => {
+            for (i, p) in procs.iter().enumerate() {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!(" {}. ", i + 1),
+                        Style::default().fg(theme.text_muted),
+                    ),
+                    Span::styled(
+                        // Pad to a fixed width, truncating long names.
+                        format!("{:<20.20}", p.name),
+                        Style::default().fg(theme.text_primary),
+                    ),
+                    Span::styled("  cpu ", Style::default().fg(theme.text_secondary)),
+                    Span::styled(
+                        format!("{:>5.1}%", p.cpu_percent),
+                        Style::default().fg(threshold_color(p.cpu_percent)),
+                    ),
+                    Span::styled("   mem ", Style::default().fg(theme.text_secondary)),
+                    Span::styled(
+                        format!("{:>5.1}%", p.mem_percent),
+                        Style::default().fg(threshold_color(p.mem_percent)),
+                    ),
+                ]));
+            }
+        }
+        _ => {
+            lines.push(Line::from(Span::styled(
+                " (process data unavailable)",
+                Style::default().fg(theme.text_muted),
+            )));
+        }
+    }
+
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+}
 
 fn render_services(frame: &mut Frame, area: Rect, services: &[DetectedService], theme: &Theme) {
     let mut lines = vec![Line::from(Span::styled(

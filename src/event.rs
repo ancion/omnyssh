@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyEvent, MouseEventKind};
+use crossterm::event::{self, Event, KeyEvent, KeyEventKind, MouseEventKind};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -13,6 +13,17 @@ pub type HostId = String;
 pub type SessionId = u64;
 pub type TransferId = u64;
 
+/// A single process entry for the "top processes" panel.
+#[derive(Debug, Clone)]
+pub struct ProcessInfo {
+    /// Process / command name.
+    pub name: String,
+    /// CPU usage percentage.
+    pub cpu_percent: f64,
+    /// Memory usage percentage.
+    pub mem_percent: f64,
+}
+
 /// Live metrics collected from a remote server.
 #[derive(Debug, Clone)]
 pub struct Metrics {
@@ -23,6 +34,8 @@ pub struct Metrics {
     pub load_avg: Option<String>,
     /// OS information (e.g., "Ubuntu 22.04 LTS", "Debian GNU/Linux 11").
     pub os_info: Option<String>,
+    /// Top processes by CPU usage (at most 3).
+    pub top_processes: Option<Vec<ProcessInfo>>,
     /// When these metrics were last successfully collected.
     pub last_updated: Instant,
 }
@@ -36,6 +49,7 @@ impl Default for Metrics {
             uptime: None,
             load_avg: None,
             os_info: None,
+            top_processes: None,
             last_updated: Instant::now(),
         }
     }
@@ -46,6 +60,8 @@ impl Default for Metrics {
 pub enum AppEvent {
     /// Keyboard or mouse input from the user.
     Key(KeyEvent),
+    /// Text pasted into the terminal (bracketed paste).
+    Paste(String),
     /// Render tick (~30 FPS).
     Tick,
     /// SSH metrics received from a background task.
@@ -232,6 +248,15 @@ pub enum DiscoveryStatus {
     Failed(String),
 }
 
+/// Whether a key event should be forwarded to the app.
+///
+/// Windows emits both a `Press` and a `Release` event per keystroke, while
+/// Unix terminals emit only `Press`. Forwarding `Release` would process every
+/// keystroke twice (e.g. "j" → "jj"), so it is dropped here.
+fn should_forward_key(kind: KeyEventKind) -> bool {
+    !matches!(kind, KeyEventKind::Release)
+}
+
 /// Spawns a background thread that reads crossterm events and forwards them
 /// to the provided sender as [`AppEvent`] values. Also sends a `Tick` every
 /// ~33 ms so the render loop stays at ≥30 FPS even when there is no input.
@@ -245,7 +270,9 @@ pub fn spawn_event_thread(tx: mpsc::Sender<AppEvent>) -> anyhow::Result<()> {
             if event::poll(tick).unwrap_or(false) {
                 match event::read() {
                     Ok(Event::Key(key)) => {
-                        if tx.blocking_send(AppEvent::Key(key)).is_err() {
+                        if should_forward_key(key.kind)
+                            && tx.blocking_send(AppEvent::Key(key)).is_err()
+                        {
                             break;
                         }
                     }
@@ -269,6 +296,11 @@ pub fn spawn_event_thread(tx: mpsc::Sender<AppEvent>) -> anyhow::Result<()> {
                             }
                         }
                     }
+                    Ok(Event::Paste(text)) => {
+                        if tx.blocking_send(AppEvent::Paste(text)).is_err() {
+                            break;
+                        }
+                    }
                     Ok(_) => {}
                     Err(_) => break,
                 }
@@ -278,4 +310,16 @@ pub fn spawn_event_thread(tx: mpsc::Sender<AppEvent>) -> anyhow::Result<()> {
         }
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forwards_press_and_repeat_but_not_release() {
+        assert!(should_forward_key(KeyEventKind::Press));
+        assert!(should_forward_key(KeyEventKind::Repeat));
+        assert!(!should_forward_key(KeyEventKind::Release));
+    }
 }

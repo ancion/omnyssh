@@ -1329,6 +1329,7 @@ impl App {
             stdout,
             crossterm::terminal::EnterAlternateScreen,
             crate::utils::mouse::EnableMinimalMouseCapture,
+            crossterm::event::EnableBracketedPaste,
         )?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
@@ -1398,6 +1399,7 @@ impl App {
             terminal.backend_mut(),
             crossterm::terminal::LeaveAlternateScreen,
             crate::utils::mouse::DisableMinimalMouseCapture,
+            crossterm::event::DisableBracketedPaste,
         )?;
         terminal.show_cursor()?;
 
@@ -1475,6 +1477,27 @@ impl App {
                     self.process_action(action).await?;
                 }
 
+                AppEvent::Paste(text) => {
+                    // On the terminal screen a paste is forwarded to the PTY as
+                    // one block; elsewhere it is replayed as key events so other
+                    // input widgets keep handling it as before.
+                    let on_terminal = {
+                        let state = self.state.read().await;
+                        state.screen == crate::app::Screen::Terminal
+                    };
+                    if on_terminal {
+                        self.handle_term_paste(&text);
+                    } else {
+                        for key in crate::utils::paste::paste_to_keys(&text) {
+                            let action = self.handle_key(key).await?;
+                            if matches!(action, Some(AppAction::Quit)) {
+                                break;
+                            }
+                            self.process_action(action).await?;
+                        }
+                    }
+                }
+
                 AppEvent::HostsLoaded(hosts) => {
                     let n = hosts.len();
                     {
@@ -1529,6 +1552,10 @@ impl App {
                                 .os_info
                                 .clone()
                                 .or_else(|| existing.os_info.clone()),
+                            top_processes: new_metrics
+                                .top_processes
+                                .clone()
+                                .or_else(|| existing.top_processes.clone()),
                             last_updated: new_metrics.last_updated,
                         }
                     } else {
@@ -1741,28 +1768,15 @@ impl App {
                 }
 
                 AppEvent::TermScroll(delta) => {
-                    // Only scroll when the Terminal screen is active and there
-                    // is a focused tab.  The offset is stored in the tab so each
-                    // tab remembers its own scroll position independently.
-                    let state = self.state.read().await;
-                    if state.screen == crate::app::Screen::Terminal {
-                        drop(state);
-                        let tv = &mut self.view.terminal_view;
-                        let focused_idx = match &tv.split {
-                            Some(sv) if tv.split_focus == SplitFocus::Secondary => sv.secondary_tab,
-                            _ => tv.active_tab,
-                        };
-                        if let Some(tab) = tv.tabs.get_mut(focused_idx) {
-                            if delta > 0 {
-                                // Cap at the configured vt100 scrollback capacity (1000
-                                // lines — matches Parser::new(rows, cols, 1000) in pty.rs).
-                                tab.scroll_offset =
-                                    tab.scroll_offset.saturating_add(delta as usize).min(1000);
-                            } else {
-                                tab.scroll_offset =
-                                    tab.scroll_offset.saturating_sub((-delta) as usize);
-                            }
-                        }
+                    // Only act when the Terminal screen is focused. The wheel
+                    // either scrolls the tab's local scrollback or is forwarded
+                    // to the foreground application (see `handle_term_scroll`).
+                    let on_terminal = {
+                        let state = self.state.read().await;
+                        state.screen == crate::app::Screen::Terminal
+                    };
+                    if on_terminal {
+                        self.handle_term_scroll(delta);
                     }
                 }
 
@@ -2020,7 +2034,7 @@ impl App {
                             }
                         }
                         Ok(AppEvent::TermScroll(delta)) => {
-                            // Handle help popup scrolling first
+                            // Handle help popup scrolling first.
                             if self.view.show_help {
                                 if delta > 0 {
                                     // Scroll down (wheel down)
@@ -2032,24 +2046,7 @@ impl App {
                                         self.view.help_scroll.saturating_sub((-delta) as usize);
                                 }
                             } else if on_terminal {
-                                let tv = &mut self.view.terminal_view;
-                                let focused_idx = match &tv.split {
-                                    Some(sv) if tv.split_focus == SplitFocus::Secondary => {
-                                        sv.secondary_tab
-                                    }
-                                    _ => tv.active_tab,
-                                };
-                                if let Some(tab) = tv.tabs.get_mut(focused_idx) {
-                                    if delta > 0 {
-                                        tab.scroll_offset = tab
-                                            .scroll_offset
-                                            .saturating_add(delta as usize)
-                                            .min(1000);
-                                    } else {
-                                        tab.scroll_offset =
-                                            tab.scroll_offset.saturating_sub((-delta) as usize);
-                                    }
-                                }
+                                self.handle_term_scroll(delta);
                             }
                         }
                         Ok(heavyweight) => {
@@ -3236,6 +3233,76 @@ impl App {
     ///
     /// Switches to the Terminal screen and sets `active_tab` to the new tab.
     /// Reports errors in the status bar without panicking.
+    /// Handles a mouse-wheel notch in the terminal screen.
+    ///
+    /// On the normal screen the focused tab's local scrollback is moved. On the
+    /// alternate screen (vim, less, htop, ...) the notch is forwarded to the
+    /// foreground application instead, since the local scrollback is empty.
+    fn handle_term_scroll(&mut self, delta: i16) {
+        let tv = &mut self.view.terminal_view;
+        let focused_idx = match &tv.split {
+            Some(sv) if tv.split_focus == SplitFocus::Secondary => sv.secondary_tab,
+            _ => tv.active_tab,
+        };
+        let Some(tab) = tv.tabs.get_mut(focused_idx) else {
+            return;
+        };
+        // Inspect the foreground app under a brief parser lock, then release it.
+        let action = match tab.parser.lock() {
+            Ok(parser) => crate::utils::scroll::resolve_scroll(delta, parser.screen()),
+            Err(_) => return,
+        };
+        match action {
+            crate::utils::scroll::ScrollAction::Scrollback(d) => {
+                if d > 0 {
+                    // Cap at the vt100 scrollback capacity (1000 lines, see pty.rs).
+                    tab.scroll_offset = tab.scroll_offset.saturating_add(d as usize).min(1000);
+                } else {
+                    tab.scroll_offset = tab.scroll_offset.saturating_sub((-d) as usize);
+                }
+            }
+            crate::utils::scroll::ScrollAction::Forward(bytes) => {
+                let id = tab.session_id;
+                if let Some(mgr) = &mut self.pty_manager {
+                    if let Err(e) = mgr.write(id, &bytes) {
+                        tracing::warn!("PTY scroll-forward write error for session {id}: {e}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Forwards pasted text to the focused terminal tab's PTY.
+    ///
+    /// The payload is wrapped in bracketed-paste markers when the foreground
+    /// application requested them (so `vim` inserts it verbatim without
+    /// auto-indent), otherwise it is sent as plain input.
+    fn handle_term_paste(&mut self, text: &str) {
+        let tv = &mut self.view.terminal_view;
+        let focused_idx = match &tv.split {
+            Some(sv) if tv.split_focus == SplitFocus::Secondary => sv.secondary_tab,
+            _ => tv.active_tab,
+        };
+        let Some(tab) = tv.tabs.get_mut(focused_idx) else {
+            return;
+        };
+        // Paste is input — jump back to the live screen, like typing.
+        tab.scroll_offset = 0;
+        let id = tab.session_id;
+        // Read the foreground app's bracketed-paste mode under a brief lock.
+        let bracketed = tab
+            .parser
+            .lock()
+            .map(|p| p.screen().bracketed_paste())
+            .unwrap_or(false);
+        let bytes = crate::utils::paste::encode_paste(text, bracketed);
+        if let Some(mgr) = &mut self.pty_manager {
+            if let Err(e) = mgr.write(id, &bytes) {
+                tracing::warn!("PTY paste write error for session {id}: {e}");
+            }
+        }
+    }
+
     async fn open_term_tab(&mut self, host_idx: usize) {
         let host = {
             let state = self.state.read().await;
