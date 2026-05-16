@@ -808,7 +808,7 @@ mod tests {
 
         // Try to extract public key using ssh-keygen (validates the key is readable by OpenSSH)
         let output = tokio::process::Command::new("ssh-keygen")
-            .args(&["-y", "-f"])
+            .args(["-y", "-f"])
             .arg(&private_key_path)
             .output()
             .await
