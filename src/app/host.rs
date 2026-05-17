@@ -560,13 +560,7 @@ impl App {
         host: &Host,
     ) -> anyhow::Result<()> {
         // 1. Leave TUI mode.
-        crossterm::terminal::disable_raw_mode()?;
-        crossterm::execute!(
-            std::io::stdout(),
-            crossterm::terminal::LeaveAlternateScreen,
-            crate::utils::mouse::DisableMinimalMouseCapture,
-            crossterm::event::DisableBracketedPaste,
-        )?;
+        leave_tui()?;
 
         // 2. Build SSH command (ConnectTimeout=10).
         let mut cmd = tokio::process::Command::new("ssh");
@@ -582,34 +576,57 @@ impl App {
         }
         cmd.arg(format!("{}@{}", host.user, host.hostname));
 
-        // 3. Hand off terminal control to SSH.
+        // 3. Hand off terminal control to SSH. A spawn/wait failure (e.g. no
+        //    `ssh` binary on PATH) must not abort the app — the TUI is still
+        //    restored below and the error is shown in the status bar.
         tracing::info!("Connecting to {} via system SSH", host.name);
-        let status = cmd.spawn()?.wait().await?;
+        let outcome = match cmd.spawn() {
+            Ok(mut child) => child.wait().await,
+            Err(e) => Err(e),
+        };
 
         // 4. Re-enter TUI mode. Bracketed paste is re-enabled here because the
         // remote shell may have left it disabled when the SSH session ended.
-        crossterm::terminal::enable_raw_mode()?;
-        crossterm::execute!(
-            std::io::stdout(),
-            crossterm::terminal::EnterAlternateScreen,
-            crate::utils::mouse::EnableMinimalMouseCapture,
-            crossterm::event::EnableBracketedPaste,
-        )?;
+        enter_tui()?;
         terminal.clear()?;
 
         // 5. Show connection result.
-        self.view.status_message = Some(if status.success() {
-            format!("Disconnected from '{}'.", host.name)
-        } else {
-            format!(
+        self.view.status_message = Some(match outcome {
+            Ok(status) if status.success() => format!("Disconnected from '{}'.", host.name),
+            Ok(status) => format!(
                 "SSH to '{}' exited with code {:?}.",
                 host.name,
                 status.code()
-            )
+            ),
+            Err(e) => format!("Failed to launch ssh for '{}': {e}", host.name),
         });
 
         Ok(())
     }
+}
+
+/// Leaves the omnyssh TUI so a child process can own the terminal.
+fn leave_tui() -> anyhow::Result<()> {
+    crossterm::terminal::disable_raw_mode()?;
+    crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::LeaveAlternateScreen,
+        crate::utils::mouse::DisableMinimalMouseCapture,
+        crossterm::event::DisableBracketedPaste,
+    )?;
+    Ok(())
+}
+
+/// Re-enters the omnyssh TUI after a child process has exited.
+fn enter_tui() -> anyhow::Result<()> {
+    crossterm::terminal::enable_raw_mode()?;
+    crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::EnterAlternateScreen,
+        crate::utils::mouse::EnableMinimalMouseCapture,
+        crossterm::event::EnableBracketedPaste,
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
