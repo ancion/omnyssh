@@ -428,19 +428,42 @@ pub fn build_authorized_keys_command(public_key: &str) -> String {
 /// (e.g., `50-cloud-init.conf`) that override the main config. We comment out the Include
 /// directive to prevent these files from re-enabling password authentication.
 ///
+/// ## Missing Directives
+/// `sed` only rewrites lines that already exist. A config that simply omits a
+/// directive would otherwise keep sshd's compiled-in default (e.g. `UsePAM yes`),
+/// so each directive is also prepended when the file contains no occurrence.
+/// Prepending keeps it the first — and therefore effective — global value.
+///
 /// Returns the command string or an error if sudo is required but unavailable.
 pub fn build_disable_password_command() -> String {
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let password = force_sshd_directive("PasswordAuthentication", "no");
+    let challenge = force_sshd_directive("ChallengeResponseAuthentication", "no");
+    let kbd = force_sshd_directive("KbdInteractiveAuthentication", "no");
+    let pam = force_sshd_directive("UsePAM", "no");
 
     format!(
         r#"sudo -n true 2>/dev/null || {{ echo "OMNYSSH_NO_SUDO"; exit 1; }}; \
            sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.omnyssh_backup.{timestamp} && \
            sudo sed -i.bak 's/^Include\s/#Include /' /etc/ssh/sshd_config && \
-           sudo sed -i.bak 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && \
-           sudo sed -i.bak 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config && \
-           sudo sed -i.bak 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config && \
-           sudo sed -i.bak 's/^#\?UsePAM.*/UsePAM no/' /etc/ssh/sshd_config && \
+           {password} && \
+           {challenge} && \
+           {kbd} && \
+           {pam} && \
            sudo sshd -t || {{ echo "OMNYSSH_CONFIG_ERROR"; sudo cp /etc/ssh/sshd_config.omnyssh_backup.{timestamp} /etc/ssh/sshd_config; exit 1; }}"#
+    )
+}
+
+/// Builds the shell fragment that forces `sshd_config` to set `directive value`.
+///
+/// First rewrites every existing column-0 occurrence (commented or not) to the
+/// desired value; then, if the file had none, prepends the directive so it
+/// becomes the first global occurrence sshd reads.
+fn force_sshd_directive(directive: &str, value: &str) -> String {
+    format!(
+        r#"sudo sed -i.bak 's/^#\?{directive}.*/{directive} {value}/' /etc/ssh/sshd_config && \
+           {{ sudo grep -qE '^{directive}[[:space:]]' /etc/ssh/sshd_config || \
+              sudo sed -i '1i {directive} {value}' /etc/ssh/sshd_config; }}"#
     )
 }
 
@@ -620,10 +643,11 @@ async fn setup_key_internal(
         }
     }
 
-    // Check sudo availability.
+    // Check sudo availability. `run_command_checked` is required here — the
+    // probe's exit status is the answer, and plain `run_command` ignores it.
     info!("Checking sudo availability");
     match password_session
-        .run_command("sudo -n true 2>/dev/null")
+        .run_command_checked("sudo -n true 2>/dev/null")
         .await
     {
         Ok(_) => {
@@ -906,6 +930,17 @@ mod tests {
         assert!(cmd.contains("KbdInteractiveAuthentication no"));
         // Should disable PAM to prevent bypassing password auth.
         assert!(cmd.contains("UsePAM no"));
+    }
+
+    #[test]
+    fn test_disable_password_command_adds_missing_directives() {
+        let cmd = build_disable_password_command();
+
+        // Each directive is prepended when the config contains no occurrence.
+        assert!(cmd.contains("grep -qE '^PasswordAuthentication[[:space:]]'"));
+        assert!(cmd.contains("sed -i '1i PasswordAuthentication no'"));
+        assert!(cmd.contains("grep -qE '^UsePAM[[:space:]]'"));
+        assert!(cmd.contains("sed -i '1i UsePAM no'"));
     }
 
     #[test]

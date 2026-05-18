@@ -21,6 +21,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Multi-line paste into the terminal fixed**: Bracketed paste is now implemented. Pasting multi-line text into the Terminal screen no longer drops the first characters, and editors like `vim` insert it verbatim without cascading auto-indent.
 - **Top processes exclude OmnySSH's own connection**: The detail-page top-processes panel no longer lists OmnySSH's metric-polling SSH connection. Its `sshd` process chain is filtered out by PID, so an idle server shows real workload while SSH sessions from other users still appear.
 - **Bracketed paste restored after system SSH**: Connecting to a host via the system `ssh` binary no longer leaves bracketed paste disabled on return, so multi-line paste into the terminal keeps working.
+- **Host keys are now verified**: A server's host key is recorded in `~/.ssh/known_hosts` on first connection (trust on first use). A later key change — or an unreadable `known_hosts` — refuses the connection instead of silently accepting an unverified key.
+- **Password authentication reliably disabled**: Auto SSH Key Setup now adds the `PasswordAuthentication`, `UsePAM`, and challenge/keyboard-interactive directives when `sshd_config` omits them, so password login is disabled even on configs that previously relied on compiled-in defaults.
+- **System SSH launch failure no longer quits the app**: If the `ssh` binary cannot be started, OmnySSH restores the TUI and reports the error in the status bar instead of exiting.
+- **Remote command exit status honoured**: SSH command execution now exposes a non-zero remote exit status; the key-setup sudo check uses it to detect missing sudo access correctly.
 
 ### Other
 - Release archives are now published alongside a `SHA256SUMS` checksum file.
