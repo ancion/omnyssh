@@ -92,15 +92,17 @@ detect_platform() {
 get_latest_release() {
     print_info "Fetching latest release version..."
 
-    # Try using curl first, then wget
+    # Try using curl first, then wget.
+    # GitHub may return compact (single-line) JSON, so the regex must anchor
+    # on the "tag_name" field — otherwise a greedy match captures the last
+    # quoted string on the line (e.g. inside the release body).
+    TAG_RE='s/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/'
     if command -v curl >/dev/null 2>&1; then
         VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | \
-                  grep '"tag_name":' | \
-                  sed -E 's/.*"([^"]+)".*/\1/')
+                  tr ',' '\n' | grep '"tag_name":' | sed -E "$TAG_RE")
     elif command -v wget >/dev/null 2>&1; then
         VERSION=$(wget -qO- "https://api.github.com/repos/$REPO/releases/latest" | \
-                  grep '"tag_name":' | \
-                  sed -E 's/.*"([^"]+)".*/\1/')
+                  tr ',' '\n' | grep '"tag_name":' | sed -E "$TAG_RE")
     else
         print_error "Neither curl nor wget found. Please install one of them."
         exit 1
