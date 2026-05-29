@@ -9,8 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## 1.0.4 — 2026-05-29
 
+### Features
+- **Terminal no longer prompts for the password on password-auth hosts**: When a host is configured with a stored password, the interactive terminal now supplies it automatically via `SSH_ASKPASS` instead of asking on every connection (metrics, quick-commands, and snippets already did this). Keys and the SSH agent are still tried first; the password is only used as a fallback. The password is passed to `ssh` through the child process environment — never written to disk, shown on the command line, or sent to the remote.
+
 ### Bug Fixes
 - **Log files no longer fill the disk**: On startup OmnySSH now prunes rolling log files older than 7 days from its config directory. The cleanup is best-effort and never blocks startup, works on every platform via the native config path, and only touches `omnyssh.log*` files — `config.toml`, `hosts.toml`, and `snippets.toml` are left untouched.
+- **Man page now installs reliably**: `install.sh` failed to install the man page into the system directory (e.g. `/usr/local/share/man` on macOS) because it never elevated with `sudo`, so `man omny` reported "No manual entry". The man page is now downloaded to a temp file first and installed with a `sudo` fallback, mirroring the binary install.
+
+### Other
+- Removed the vestigial empty `package.json` and `package-lock.json` (left over from an earlier project name); they served no purpose in this Rust project.
 
 ---
 
