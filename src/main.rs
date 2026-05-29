@@ -30,6 +30,10 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("Warning: Failed to create log directory: {}", e);
     }
 
+    // Prune stale rolling log files so they don't accumulate indefinitely.
+    let pruned_logs =
+        utils::platform::cleanup_old_logs(&log_dir, utils::platform::LOG_RETENTION_DAYS);
+
     // Use daily rolling file appender
     // IMPORTANT: _guard must live for the entire duration of the program.
     // If it's dropped, logs will stop being written to the file.
@@ -43,6 +47,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .with_writer(non_blocking)
         .init();
+
+    if pruned_logs > 0 {
+        tracing::debug!("Pruned {} stale log file(s)", pruned_logs);
+    }
 
     // Restore the terminal if a panic occurs so the user is not left with a
     // broken shell.
