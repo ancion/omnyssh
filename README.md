@@ -112,8 +112,7 @@ Download from the [**Releases**](https://github.com/timhartmann7/omnyssh/release
 | Platform | Archive |
 |----------|---------|
 | Linux x86_64 | `omny-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux ARM64 | `omny-aarch64-unknown-linux-gnu.tar.gz` |
-| Linux ARM64 (static / Termux) | `omny-aarch64-unknown-linux-musl.tar.gz` |
+| Linux ARM64 (static, incl. Termux) | `omny-aarch64-unknown-linux-musl.tar.gz` |
 | macOS Intel | `omny-x86_64-apple-darwin.tar.gz` |
 | macOS Apple Silicon | `omny-aarch64-apple-darwin.tar.gz` |
 | Windows x86_64 | `omny-x86_64-pc-windows-msvc.zip` |
@@ -295,6 +294,12 @@ connect      = "Enter"
 dashboard    = "F1"
 file_manager = "F2"
 snippets     = "F3"
+next_screen  = "Tab"           # cycle dashboard → files → snippets → terminal
+next_tab     = "Tab"           # next terminal tab (or pane focus when split)
+
+[update]
+check_on_startup = true        # check GitHub Releases for a newer version on startup
+skip_version = ""              # a version to skip; set when you choose "Skip this version"
 ```
 
 #### Example: hosts.toml
@@ -357,7 +362,7 @@ Set the theme permanently in `config.toml` or temporarily via the `--theme` flag
 | `0.3.0` | 3 | Snippets & quick-execute |
 | `0.4.0` | 4 | SFTP file manager |
 | `0.5.0` | 5 | Multi-session tabs & split-view |
-| **`1.0.0`** | **6** | **Polish, themes, configurable keybindings — current** ✅ |
+| **`1.0.4`** | **6** | **Polish, themes, configurable keybindings — current** ✅ |
 
 ---
 
