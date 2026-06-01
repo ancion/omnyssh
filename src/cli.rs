@@ -23,7 +23,8 @@ pub struct Cli {
 
     /// Override the color theme (default | dracula | nord | gruvbox).
     ///
-    /// This overrides the theme setting from the config file.
+    /// The chosen theme is saved to the config file, so it persists on the
+    /// next run without the flag.
     #[arg(short, long, value_name = "THEME")]
     pub theme: Option<String>,
 

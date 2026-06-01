@@ -55,7 +55,7 @@ PTY tabs and split-view for working on several servers at once. Switch between h
 Find any host or snippet instantly. Type a few letters, get instant results.
 
 ### 🎨 **4 Built-in Themes**
-Choose from **Default**, **Dracula**, **Nord**, or **Gruvbox**. Switch themes on the fly with `--theme`.
+Choose from **Default**, **Dracula**, **Nord**, or **Gruvbox**. Switch with `--theme`, which saves your choice to `config.toml`.
 
 ### ⌨️ **Configurable Keybindings**
 Remap global shortcuts in one TOML file. Make OmnySSH work the way you work.
@@ -348,7 +348,7 @@ params = ["service_name"]
 | `nord` | Arctic blues and teals — [Nord](https://www.nordtheme.com/) |
 | `gruvbox` | Warm amber and orange — [Gruvbox](https://github.com/morhetz/gruvbox) |
 
-Set the theme permanently in `config.toml` or temporarily via the `--theme` flag.
+Set the theme in `config.toml`, or pass `--theme` once — it is written back to `config.toml` and persists on the next run.
 
 ---
 
