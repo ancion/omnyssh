@@ -282,10 +282,6 @@ max_concurrent_connections = 10
 
 [ui]
 theme = "default"              # default | dracula | nord | gruvbox
-show_ip = true
-show_uptime = true
-card_layout = "grid"           # grid | list
-border_style = "rounded"       # rounded | plain | double
 
 [keybindings]
 quit         = "q"
