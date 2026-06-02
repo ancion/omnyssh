@@ -260,7 +260,7 @@ Config files live in the native OS config directory:
 | **Termux (Android)** | `~/.config/omnyssh/` |
 
 > On macOS the path contains a space, so quote it in the shell:
-> `ls "~/Library/Application Support/omnyssh/"` (or use `~/Library/'Application Support'/omnyssh/`).
+> `ls ~/Library/'Application Support'/omnyssh/`
 
 | File | Purpose |
 |------|---------|
