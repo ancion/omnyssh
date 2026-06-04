@@ -1,10 +1,7 @@
 //! Host list state: add/edit form, list view, popups, and the `App` methods
 //! that create, update, delete, and connect to hosts.
 
-use std::io::Stdout;
 use std::time::Duration;
-
-use ratatui::{backend::CrosstermBackend, Terminal};
 
 use super::*;
 use crate::ssh::client::HostSource;
@@ -239,8 +236,6 @@ pub struct HostListView {
     pub filtered_indices: Vec<usize>,
     /// Currently visible popup (if any).
     pub popup: Option<HostPopup>,
-    /// Host waiting to be connected (handled before the next render).
-    pub pending_connect: Option<Host>,
     // Dashboard additions -----------
     /// Active sort order for the dashboard grid.
     pub sort_order: SortOrder,
@@ -551,82 +546,6 @@ impl App {
             self.view.status_message = Some(format!("Save failed: {e}"));
         }
     }
-
-    /// Temporarily restores the terminal, runs the system SSH binary for the
-    /// given host, then re-initialises the TUI.
-    pub(crate) async fn connect_system_ssh(
-        &mut self,
-        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-        host: &Host,
-    ) -> anyhow::Result<()> {
-        // 1. Leave TUI mode.
-        leave_tui()?;
-
-        // 2. Build SSH command (ConnectTimeout=10).
-        let mut cmd = tokio::process::Command::new("ssh");
-        cmd.args(["-o", "ConnectTimeout=10"]);
-        if host.port != 22 {
-            cmd.args(["-p", &host.port.to_string()]);
-        }
-        if let Some(ref key) = host.identity_file {
-            cmd.args(["-i", key]);
-        }
-        if let Some(ref jump) = host.proxy_jump {
-            cmd.args(["-J", jump]);
-        }
-        cmd.arg(format!("{}@{}", host.user, host.hostname));
-
-        // 3. Hand off terminal control to SSH. A spawn/wait failure (e.g. no
-        //    `ssh` binary on PATH) must not abort the app — the TUI is still
-        //    restored below and the error is shown in the status bar.
-        tracing::info!("Connecting to {} via system SSH", host.name);
-        let outcome = match cmd.spawn() {
-            Ok(mut child) => child.wait().await,
-            Err(e) => Err(e),
-        };
-
-        // 4. Re-enter TUI mode. Bracketed paste is re-enabled here because the
-        // remote shell may have left it disabled when the SSH session ended.
-        enter_tui()?;
-        terminal.clear()?;
-
-        // 5. Show connection result.
-        self.view.status_message = Some(match outcome {
-            Ok(status) if status.success() => format!("Disconnected from '{}'.", host.name),
-            Ok(status) => format!(
-                "SSH to '{}' exited with code {:?}.",
-                host.name,
-                status.code()
-            ),
-            Err(e) => format!("Failed to launch ssh for '{}': {e}", host.name),
-        });
-
-        Ok(())
-    }
-}
-
-/// Leaves the omnyssh TUI so a child process can own the terminal.
-fn leave_tui() -> anyhow::Result<()> {
-    crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(
-        std::io::stdout(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crate::utils::mouse::DisableMinimalMouseCapture,
-        crossterm::event::DisableBracketedPaste,
-    )?;
-    Ok(())
-}
-
-/// Re-enters the omnyssh TUI after a child process has exited.
-fn enter_tui() -> anyhow::Result<()> {
-    crossterm::terminal::enable_raw_mode()?;
-    crossterm::execute!(
-        std::io::stdout(),
-        crossterm::terminal::EnterAlternateScreen,
-        crate::utils::mouse::EnableMinimalMouseCapture,
-        crossterm::event::EnableBracketedPaste,
-    )?;
-    Ok(())
 }
 
 #[cfg(test)]

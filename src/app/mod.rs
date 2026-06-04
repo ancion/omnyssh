@@ -331,14 +331,17 @@ impl App {
         }
 
         // Terminal restore — always runs even if main_loop returned Err.
-        crossterm::terminal::disable_raw_mode()?;
-        crossterm::execute!(
+        // Each step runs unconditionally so a failure in one does not prevent
+        // the remaining steps from executing.
+        let r1 = crossterm::terminal::disable_raw_mode();
+        let r2 = crossterm::execute!(
             terminal.backend_mut(),
             crossterm::terminal::LeaveAlternateScreen,
             crate::utils::mouse::DisableMinimalMouseCapture,
             crossterm::event::DisableBracketedPaste,
-        )?;
-        terminal.show_cursor()?;
+        );
+        let r3 = terminal.show_cursor();
+        r1.and(r2).and(r3)?;
 
         result
     }
@@ -349,15 +352,6 @@ impl App {
         terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     ) -> anyhow::Result<()> {
         loop {
-            // ----------------------------------------------------------------
-            // Handle a pending SSH connection *before* the next render so the
-            // terminal is fully restored while SSH runs.
-            // ----------------------------------------------------------------
-            if let Some(host) = self.view.host_list.pending_connect.take() {
-                self.connect_system_ssh(terminal, &host).await?;
-                continue;
-            }
-
             // ----------------------------------------------------------------
             // Render.
             // ----------------------------------------------------------------

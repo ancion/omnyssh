@@ -469,6 +469,8 @@ impl App {
         let is_remote = self.view.file_manager.active_panel == FmPanel::Remote;
 
         if is_remote {
+            // Track how many ops are in flight so SftpOpDone can count down.
+            self.view.file_manager.pending_ops = paths.len();
             // Send delete commands for all paths.
             for path in paths {
                 if let Some(mgr) = &self.sftp_manager {
@@ -478,23 +480,28 @@ impl App {
         } else {
             let tx = self.event_tx.clone();
             tokio::spawn(async move {
-                let mut last_err: Option<String> = None;
+                let mut errors: Vec<String> = Vec::new();
                 for path in paths {
-                    let result = tokio::fs::remove_file(&path).await.or_else(|_| {
-                        // Might be a directory — try remove_dir (empty only).
-                        // Using blocking version since remove_dir_all is destructive.
-                        std::fs::remove_dir(&path)
-                            .map_err(|e| std::io::Error::new(e.kind(), e.to_string()))
-                    });
+                    let result = match tokio::fs::remove_file(&path).await {
+                        Ok(()) => Ok(()),
+                        Err(_) => {
+                            // Might be a directory — try remove_dir (empty only).
+                            tokio::fs::remove_dir(&path).await
+                        }
+                    };
                     if let Err(e) = result {
-                        last_err = Some(e.to_string());
+                        errors.push(format!("{path}: {e}"));
                     }
                 }
-                let result = last_err.map_or(Ok(()), Err);
+                let result = if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(errors.join("; "))
+                };
                 let _ = tx
                     .send(AppEvent::SftpOpDone {
                         kind: SftpOpKind::Delete,
-                        result: result.map_err(|e: String| e),
+                        result,
                     })
                     .await;
             });
