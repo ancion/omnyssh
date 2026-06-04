@@ -381,6 +381,18 @@ pub fn sanitize_hostname(hostname: &str) -> String {
 /// The command creates ~/.ssh if it doesn't exist, appends the key (never overwrites),
 /// and sets correct permissions.
 pub fn build_authorized_keys_command(public_key: &str) -> String {
+    // Validate public key is a single line matching expected SSH format.
+    let public_key = public_key.trim();
+    if public_key.contains('\n') || public_key.contains('\r') || public_key.contains('\0') {
+        panic!("Public key file contains invalid characters");
+    }
+    if !public_key.starts_with("ssh-ed25519 ")
+        && !public_key.starts_with("ssh-rsa ")
+        && !public_key.starts_with("ecdsa-sha2-")
+    {
+        panic!("Public key file has unrecognized key type");
+    }
+
     // Escape single quotes in the public key.
     let escaped_key = public_key.replace('\'', "'\\''");
 
@@ -429,7 +441,7 @@ pub fn build_disable_password_command() -> String {
     format!(
         r#"sudo -n true 2>/dev/null || {{ echo "OMNYSSH_NO_SUDO"; exit 1; }}; \
            sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.omnyssh_backup.{timestamp} && \
-           sudo sed -i.bak 's/^Include\s/#Include /' /etc/ssh/sshd_config && \
+           sudo sed -i.bak 's|^Include /etc/ssh/sshd_config.d/|#Include /etc/ssh/sshd_config.d/|' /etc/ssh/sshd_config && \
            {password} && \
            {challenge} && \
            {kbd} && \
@@ -444,6 +456,18 @@ pub fn build_disable_password_command() -> String {
 /// desired value; then, if the file had none, prepends the directive so it
 /// becomes the first global occurrence sshd reads.
 fn force_sshd_directive(directive: &str, value: &str) -> String {
+    assert!(
+        directive
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+        "directive contains unsafe characters: {directive}"
+    );
+    assert!(
+        value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' '),
+        "value contains unsafe characters: {value}"
+    );
     format!(
         r#"sudo sed -i.bak 's/^#\?{directive}.*/{directive} {value}/' /etc/ssh/sshd_config && \
            {{ sudo grep -qE '^{directive}[[:space:]]' /etc/ssh/sshd_config || \
@@ -469,7 +493,7 @@ pub fn build_reload_sshd_command() -> String {
 ///
 /// Restores the most recent OmnySSH backup of sshd_config and reloads the daemon.
 pub fn build_rollback_command() -> String {
-    r#"BACKUP=$(ls -t /etc/ssh/sshd_config.omnyssh_backup.* 2>/dev/null | head -1); \
+    r#"BACKUP=$(find /etc/ssh -maxdepth 1 -name 'sshd_config.omnyssh_backup.*' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-); \
        if [ -n "$BACKUP" ]; then \
            sudo cp "$BACKUP" /etc/ssh/sshd_config && \
            (sudo systemctl reload sshd 2>/dev/null || sudo systemctl reload ssh 2>/dev/null || sudo service sshd reload 2>/dev/null || sudo service ssh reload); \
@@ -581,6 +605,21 @@ async fn setup_key_internal(
     let public_key_content = tokio::fs::read_to_string(&public_key_path)
         .await
         .context("Failed to read public key file")?;
+
+    // Validate public key format before embedding in shell command.
+    let public_key_trimmed = public_key_content.trim();
+    if public_key_trimmed.contains('\n')
+        || public_key_trimmed.contains('\r')
+        || public_key_trimmed.contains('\0')
+    {
+        anyhow::bail!("Public key file contains invalid characters");
+    }
+    if !public_key_trimmed.starts_with("ssh-ed25519 ")
+        && !public_key_trimmed.starts_with("ssh-rsa ")
+        && !public_key_trimmed.starts_with("ecdsa-sha2-")
+    {
+        anyhow::bail!("Public key file has unrecognized key type");
+    }
 
     let copy_cmd = build_authorized_keys_command(&public_key_content);
     match time::timeout(STEP_TIMEOUT, password_session.run_command(&copy_cmd)).await {
@@ -906,8 +945,10 @@ mod tests {
         assert!(cmd.contains("omnyssh_backup."));
         // Should run sshd -t for validation.
         assert!(cmd.contains("sshd -t"));
-        // Should comment out Include directives to prevent overrides.
-        assert!(cmd.contains("'s/^Include\\s/#Include /'"));
+        // Should comment out cloud-init Include directive to prevent overrides.
+        assert!(
+            cmd.contains("'s|^Include /etc/ssh/sshd_config.d/|#Include /etc/ssh/sshd_config.d/|'")
+        );
         // Should disable all password auth methods.
         assert!(cmd.contains("PasswordAuthentication no"));
         assert!(cmd.contains("ChallengeResponseAuthentication no"));
