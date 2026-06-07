@@ -23,12 +23,13 @@ use crate::ssh::client::Host;
 // russh Handler implementation
 // ---------------------------------------------------------------------------
 
-/// Minimal russh client handler for metric collection.
+/// Shared russh client handler used by every native SSH path (metrics, SFTP,
+/// terminal).
 ///
 /// Verifies the server's host key against `~/.ssh/known_hosts`.
 /// Unknown hosts are recorded on first connection (trust on first use);
 /// changed keys are rejected.
-struct MetricsHandler {
+pub(crate) struct KnownHostsHandler {
     /// Hostname used for known_hosts lookup.
     host: String,
     /// Port used for known_hosts lookup.
@@ -36,7 +37,7 @@ struct MetricsHandler {
 }
 
 #[async_trait]
-impl client::Handler for MetricsHandler {
+impl client::Handler for KnownHostsHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
@@ -109,7 +110,7 @@ impl client::Handler for MetricsHandler {
 /// Wrapped in Arc to allow sharing across multiple operations (discovery + metrics).
 #[derive(Clone)]
 pub struct SshSession {
-    handle: Arc<Handle<MetricsHandler>>,
+    handle: Arc<Handle<KnownHostsHandler>>,
 }
 
 impl SshSession {
@@ -128,36 +129,8 @@ impl SshSession {
     /// - Authentication failure
     /// - Network error
     pub async fn connect(host: &Host) -> anyhow::Result<Self> {
-        let config = Arc::new(client::Config {
-            inactivity_timeout: Some(Duration::from_secs(30)),
-            keepalive_interval: Some(Duration::from_secs(15)),
-            keepalive_max: 3,
-            ..Default::default()
-        });
-
-        let addr = format!("{}:{}", host.hostname, host.port);
-        let mut handle = time::timeout(
-            Duration::from_secs(10),
-            client::connect(
-                config,
-                addr,
-                MetricsHandler {
-                    host: host.hostname.clone(),
-                    port: host.port,
-                },
-            ),
-        )
-        .await
-        .map_err(|_| anyhow!("SSH connection timed out (10 s)"))?
-        .context("SSH connection failed")?;
-
-        let authenticated = authenticate(&mut handle, host).await?;
-        if !authenticated {
-            return Err(anyhow!("SSH authentication failed for {}", host.name));
-        }
-
         Ok(Self {
-            handle: Arc::new(handle),
+            handle: Arc::new(connect_and_auth(host).await?),
         })
     }
 
@@ -239,10 +212,52 @@ impl SshSession {
 }
 
 // ---------------------------------------------------------------------------
+// Connection + authentication
+// ---------------------------------------------------------------------------
+
+/// Connect to `host`, verify its host key, and authenticate.
+///
+/// Shared by [`SshSession::connect`] (metrics/SFTP) and the terminal so every
+/// native SSH path honors the same keys, agent, passwords, and known_hosts
+/// policy.
+///
+/// # Errors
+/// Connection timeout (> 10 s), host-key rejection, or authentication failure.
+pub(crate) async fn connect_and_auth(host: &Host) -> anyhow::Result<Handle<KnownHostsHandler>> {
+    let config = Arc::new(client::Config {
+        inactivity_timeout: Some(Duration::from_secs(30)),
+        keepalive_interval: Some(Duration::from_secs(15)),
+        keepalive_max: 3,
+        ..Default::default()
+    });
+
+    let addr = format!("{}:{}", host.hostname, host.port);
+    let mut handle = time::timeout(
+        Duration::from_secs(10),
+        client::connect(
+            config,
+            addr,
+            KnownHostsHandler {
+                host: host.hostname.clone(),
+                port: host.port,
+            },
+        ),
+    )
+    .await
+    .map_err(|_| anyhow!("SSH connection timed out (10 s)"))?
+    .context("SSH connection failed")?;
+
+    if !authenticate(&mut handle, host).await? {
+        return Err(anyhow!("SSH authentication failed for {}", host.name));
+    }
+    Ok(handle)
+}
+
+// ---------------------------------------------------------------------------
 // Authentication helpers
 // ---------------------------------------------------------------------------
 
-async fn authenticate(handle: &mut Handle<MetricsHandler>, host: &Host) -> anyhow::Result<bool> {
+async fn authenticate(handle: &mut Handle<KnownHostsHandler>, host: &Host) -> anyhow::Result<bool> {
     let user = host.user.clone();
 
     // 1. Try SSH agent first — it handles passphrase-protected keys and is the
@@ -314,7 +329,7 @@ fn default_key_paths() -> Vec<std::path::PathBuf> {
 }
 
 async fn try_key_auth(
-    handle: &mut Handle<MetricsHandler>,
+    handle: &mut Handle<KnownHostsHandler>,
     user: &str,
     key_path: &str,
 ) -> anyhow::Result<bool> {
@@ -334,7 +349,7 @@ async fn try_key_auth(
 }
 
 #[cfg(unix)]
-async fn try_agent_auth(handle: &mut Handle<MetricsHandler>, user: &str) -> anyhow::Result<bool> {
+async fn try_agent_auth(handle: &mut Handle<KnownHostsHandler>, user: &str) -> anyhow::Result<bool> {
     use russh::keys::agent::client::AgentClient;
 
     let mut agent = AgentClient::connect_env()
@@ -363,7 +378,7 @@ async fn try_agent_auth(handle: &mut Handle<MetricsHandler>, user: &str) -> anyh
 /// # Errors
 /// Returns an error if the authentication attempt fails.
 async fn try_password_auth(
-    handle: &mut Handle<MetricsHandler>,
+    handle: &mut Handle<KnownHostsHandler>,
     user: &str,
     password: &str,
 ) -> anyhow::Result<bool> {
