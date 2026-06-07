@@ -121,8 +121,6 @@ pub struct AppState {
     pub services: HashMap<String, Vec<crate::event::DetectedService>>,
     /// Active alerts per host.
     pub alerts: HashMap<String, Vec<crate::event::Alert>>,
-    /// Discovery status per host.
-    pub discovery_status: HashMap<String, crate::event::DiscoveryStatus>,
 }
 
 // ---------------------------------------------------------------------------
@@ -537,26 +535,10 @@ impl App {
                 // ----------------------------------------------------------------
                 AppEvent::DiscoveryQuickScanDone(host_name, services) => {
                     let mut state = self.state.write().await;
-                    state.services.insert(host_name.clone(), services);
-                    state
-                        .discovery_status
-                        .insert(host_name, crate::event::DiscoveryStatus::QuickScanDone);
-                }
-
-                AppEvent::DiscoveryDeepProbeDone(host_name, services) => {
-                    let mut state = self.state.write().await;
-                    state.services.insert(host_name.clone(), services);
-                    state
-                        .discovery_status
-                        .insert(host_name, crate::event::DiscoveryStatus::DeepProbeDone);
+                    state.services.insert(host_name, services);
                 }
 
                 AppEvent::DiscoveryFailed(host_name, error) => {
-                    let mut state = self.state.write().await;
-                    state.discovery_status.insert(
-                        host_name.clone(),
-                        crate::event::DiscoveryStatus::Failed(error.clone()),
-                    );
                     tracing::debug!(host = %host_name, error = %error, "discovery failed");
 
                     // Show error notification in status bar (extract only the essential error message)
@@ -567,15 +549,6 @@ impl App {
                         "Discovery failed for '{}': {}",
                         host_name, short_error
                     ));
-                }
-
-                AppEvent::AlertNew(host_name, alert) => {
-                    let mut state = self.state.write().await;
-                    state
-                        .alerts
-                        .entry(host_name)
-                        .or_insert_with(Vec::new)
-                        .push(alert);
                 }
 
                 // ----------------------------------------------------------------

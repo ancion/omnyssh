@@ -134,12 +134,8 @@ pub enum AppEvent {
     // -----------------------------------------------------------------------
     /// Quick scan completed for a host, services detected.
     DiscoveryQuickScanDone(HostId, Vec<DetectedService>),
-    /// Deep probe completed for a host, enriched metrics available.
-    DiscoveryDeepProbeDone(HostId, Vec<DetectedService>),
     /// Discovery failed for a host with an error message.
     DiscoveryFailed(HostId, String),
-    /// New alert generated for a host.
-    AlertNew(HostId, Alert),
 
     // -----------------------------------------------------------------------
     // Auto SSH Key Setup events
@@ -237,15 +233,6 @@ pub enum AlertSeverity {
     Info,
     Warning,
     Critical,
-}
-
-/// Discovery status for a host.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DiscoveryStatus {
-    NotStarted,
-    QuickScanDone,
-    DeepProbeDone,
-    Failed(String),
 }
 
 /// Whether a key event should be forwarded to the app.

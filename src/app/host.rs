@@ -482,16 +482,6 @@ impl App {
                             if let Some(services) = state.services.remove(&old_name) {
                                 state.services.insert(host.name.clone(), services);
                             }
-
-                            // Migrate alerts
-                            if let Some(alerts) = state.alerts.remove(&old_name) {
-                                state.alerts.insert(host.name.clone(), alerts);
-                            }
-
-                            // Migrate discovery status
-                            if let Some(discovery) = state.discovery_status.remove(&old_name) {
-                                state.discovery_status.insert(host.name.clone(), discovery);
-                            }
                         }
                     }
 

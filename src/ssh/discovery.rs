@@ -99,58 +99,8 @@ pub async fn quick_scan(
     Ok(())
 }
 
-/// Performs a Deep Probe on the given SSH session.
-///
-/// Deep Probe:
-/// 1. For each detected service, runs detailed metric collection
-/// 2. Parses metrics and generates alerts based on thresholds
-/// 3. Sends DiscoveryDeepProbeDone event with full service details
-///
-/// This is slower (~10-30 seconds depending on number of services) and
-/// runs periodically based on `deep_probe_interval` config.
-///
-/// # Errors
-/// Returns an error if critical SSH commands fail.
-/// Individual service failures are logged but don't fail the entire probe
-/// (graceful degradation).
-pub async fn deep_probe(
-    session: &SshSession,
-    host_id: String,
-    probe_output: &ProbeOutput,
-    tx: mpsc::Sender<AppEvent>,
-) -> Result<()> {
-    tracing::debug!(host = %host_id, "starting deep probe");
-
-    // Collect metrics for all detected services
-    let registry = ServiceRegistry::new();
-    let services = registry.collect_all_metrics(session, probe_output).await;
-
-    tracing::debug!(
-        host = %host_id,
-        services = services.len(),
-        "deep probe collected metrics for {} services",
-        services.len()
-    );
-
-    // Extract and send alerts
-    for service in &services {
-        for alert in &service.alerts {
-            tx.send(AppEvent::AlertNew(host_id.clone(), alert.clone()))
-                .await
-                .ok(); // Don't fail if alert channel is full
-        }
-    }
-
-    // Send aggregated service data
-    tx.send(AppEvent::DiscoveryDeepProbeDone(host_id, services))
-        .await
-        .map_err(|_| anyhow::anyhow!("event channel closed"))?;
-
-    Ok(())
-}
-
-// Note: Quick Scan and Deep Probe are called directly from pool.rs
-// They run in spawned tokio tasks there to avoid blocking the metrics loop
+// Note: Quick Scan is called directly from pool.rs
+// It runs in a spawned tokio task there to avoid blocking the metrics loop
 
 // ---------------------------------------------------------------------------
 // Tests

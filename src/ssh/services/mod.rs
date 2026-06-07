@@ -4,12 +4,10 @@
 //! [`ServiceProvider`] trait. The registry discovers which providers
 //! apply to a given server based on the probe output.
 
-use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::event::{Alert, DetectedService, ServiceKind, ServiceMetric};
+use crate::event::{ServiceKind, ServiceMetric};
 use crate::ssh::probe::ProbeOutput;
-use crate::ssh::session::SshSession;
 
 // Service provider modules
 pub mod docker;
@@ -18,14 +16,11 @@ pub mod nodejs;
 pub mod postgresql;
 pub mod redis;
 
-/// Trait for service-specific detection and metric collection.
+/// Trait for service-specific detection from probe output.
 ///
 /// Each provider implements:
 /// 1. Quick detection from probe output
-/// 2. Deep metric collection commands
-/// 3. Parsing of metric output into structured data
-/// 4. Alert generation based on thresholds
-/// 5. Suggested snippet templates
+/// 2. Basic metric extraction from Quick Scan output
 #[async_trait]
 pub trait ServiceProvider: Send + Sync {
     /// Returns the service type this provider handles.
@@ -40,27 +35,9 @@ pub trait ServiceProvider: Send + Sync {
     /// Extract basic metrics from Quick Scan probe output.
     ///
     /// This is called immediately during Quick Scan to provide basic
-    /// service information without waiting for Deep Probe.
-    /// Default implementation returns empty metrics.
+    /// service information. Default implementation returns empty metrics.
     fn quick_metrics(&self, _probe_output: &ProbeOutput) -> Vec<ServiceMetric> {
         Vec::new()
-    }
-
-    /// Collect detailed metrics for this service.
-    ///
-    /// Called during Deep Probe. Returns commands to execute and
-    /// parses their output.
-    ///
-    /// # Errors
-    /// Returns an error if SSH commands fail or output cannot be parsed.
-    /// Providers should handle missing commands gracefully.
-    async fn collect_metrics(&self, session: &SshSession) -> Result<DetectedService>;
-
-    /// Extract service version from probe output, if available.
-    ///
-    /// Returns None if version cannot be determined (this is fine).
-    fn extract_version(&self, _probe_output: &ProbeOutput) -> Option<String> {
-        None
     }
 }
 
@@ -102,40 +79,6 @@ impl ServiceRegistry {
             .find(|p| &p.kind() == kind)
             .map(|boxed| &**boxed)
     }
-
-    /// Collect metrics for all detected services.
-    ///
-    /// Runs metric collection in parallel for all providers.
-    ///
-    /// # Errors
-    /// Returns errors from individual providers, but doesn't fail the entire
-    /// collection if one provider fails (graceful degradation).
-    pub async fn collect_all_metrics(
-        &self,
-        session: &SshSession,
-        probe_output: &ProbeOutput,
-    ) -> Vec<DetectedService> {
-        let detected_kinds = self.detect_services(probe_output);
-
-        // Collect metrics for each detected service
-        let mut services = Vec::new();
-        for kind in detected_kinds {
-            if let Some(provider) = self.get_provider(&kind) {
-                match provider.collect_metrics(session).await {
-                    Ok(service) => services.push(service),
-                    Err(e) => {
-                        tracing::debug!(
-                            service = ?kind,
-                            error = %e,
-                            "failed to collect metrics for service"
-                        );
-                    }
-                }
-            }
-        }
-
-        services
-    }
 }
 
 impl Default for ServiceRegistry {
@@ -151,41 +94,6 @@ pub fn metric_int(name: impl Into<String>, value: i64, unit: impl Into<String>) 
         value: crate::event::MetricValue::Integer(value),
         unit: unit.into(),
         threshold: None,
-    }
-}
-
-/// Helper to create a float metric.
-pub fn metric_float(name: impl Into<String>, value: f64, unit: impl Into<String>) -> ServiceMetric {
-    ServiceMetric {
-        name: name.into(),
-        value: crate::event::MetricValue::Float(value),
-        unit: unit.into(),
-        threshold: None,
-    }
-}
-
-/// Helper to create a string metric.
-pub fn metric_string(name: impl Into<String>, value: impl Into<String>) -> ServiceMetric {
-    ServiceMetric {
-        name: name.into(),
-        value: crate::event::MetricValue::String(value.into()),
-        unit: String::new(),
-        threshold: None,
-    }
-}
-
-/// Helper to create an alert.
-pub fn alert(
-    severity: crate::event::AlertSeverity,
-    service: ServiceKind,
-    message: impl Into<String>,
-    suggested_action: Option<String>,
-) -> Alert {
-    Alert {
-        severity,
-        message: message.into(),
-        service,
-        suggested_action,
     }
 }
 
@@ -211,18 +119,5 @@ mod tests {
         assert!(registry.get_provider(&ServiceKind::PostgreSQL).is_some());
         assert!(registry.get_provider(&ServiceKind::Redis).is_some());
         assert!(registry.get_provider(&ServiceKind::NodeJS).is_some());
-    }
-
-    #[test]
-    fn test_metric_helpers() {
-        let m_int = metric_int("count", 42, "");
-        assert_eq!(m_int.name, "count");
-        matches!(m_int.value, crate::event::MetricValue::Integer(42));
-
-        let m_float = metric_float("percent", 73.5, "%");
-        assert_eq!(m_float.unit, "%");
-
-        let m_string = metric_string("status", "healthy");
-        matches!(m_string.value, crate::event::MetricValue::String(_));
     }
 }
