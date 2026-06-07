@@ -14,18 +14,6 @@ mod utils;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // SSH_ASKPASS mode: the terminal's `ssh` child re-invokes us as its askpass
-    // helper for password-auth hosts (see `ssh::askpass`). Handle it before
-    // parsing CLI args — the prompt is passed as a positional argument that is
-    // not a valid omny flag — and before any TUI/logging setup.
-    if let Ok(password) = std::env::var(ssh::askpass::PASSWORD_ENV) {
-        let prompt = std::env::args().nth(1).unwrap_or_default();
-        if let Some(answer) = ssh::askpass::response_for_prompt(&prompt, &password) {
-            println!("{answer}");
-        }
-        return Ok(());
-    }
-
     let cli = cli::Cli::parse();
 
     // Initialise logging. Output goes to a log file instead of stderr to prevent

@@ -1,10 +1,8 @@
 /// SSH client, session management, SFTP and metrics collection.
 ///
-/// Supports system SSH for interactive sessions, native russh client for
-/// metrics collection, PTY-backed multi-session terminal emulator,
-/// Smart Server Context with service discovery, and Auto SSH Key Setup
-/// for secure authentication.
-pub mod askpass;
+/// A native russh client powers metrics collection, SFTP, and the
+/// multi-session terminal emulator, plus Smart Server Context with service
+/// discovery and Auto SSH Key Setup for secure authentication.
 pub mod client;
 pub mod discovery;
 pub mod key_setup;
