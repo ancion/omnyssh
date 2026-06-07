@@ -190,6 +190,11 @@ impl PtyManager {
         rows: u16,
         tx: mpsc::Sender<AppEvent>,
     ) -> Result<SessionId> {
+        // ProxyJump is not yet wired into the russh terminal path. Refuse rather
+        // than silently connecting direct to the wrong host.
+        if host.proxy_jump.is_some() {
+            anyhow::bail!("ProxyJump is not yet supported in the terminal");
+        }
         let id = self.next_id;
         self.next_id += 1;
         let parser = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 1000)));
