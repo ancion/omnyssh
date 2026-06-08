@@ -212,7 +212,6 @@ pub enum HostPopup {
     KeySetupConfirm(usize),
     /// Showing key setup progress.
     KeySetupProgress {
-        host_idx: usize,
         host_name: String,
         current_step: Option<crate::ssh::key_setup::KeySetupStep>,
     },
@@ -481,16 +480,6 @@ impl App {
                             // Migrate services
                             if let Some(services) = state.services.remove(&old_name) {
                                 state.services.insert(host.name.clone(), services);
-                            }
-
-                            // Migrate alerts
-                            if let Some(alerts) = state.alerts.remove(&old_name) {
-                                state.alerts.insert(host.name.clone(), alerts);
-                            }
-
-                            // Migrate discovery status
-                            if let Some(discovery) = state.discovery_status.remove(&old_name) {
-                                state.discovery_status.insert(host.name.clone(), discovery);
                             }
                         }
                     }

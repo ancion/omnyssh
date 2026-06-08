@@ -266,7 +266,6 @@ fn render_grid(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState
                         metrics,
                         status,
                         services: state.services.get(&host.name).map(|s| s.as_slice()),
-                        alerts: state.alerts.get(&host.name).map(|a| a.as_slice()),
                     },
                     is_selected,
                     &view.theme,

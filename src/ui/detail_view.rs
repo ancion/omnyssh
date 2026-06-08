@@ -1,7 +1,7 @@
 //! Detail View screen — Smart Server Context.
 //!
 //! Shows comprehensive server information before SSH connection,
-//! including metrics, services, alerts, and suggested actions.
+//! including metrics, top processes, and detected services.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -13,7 +13,7 @@ use ratatui::{
 };
 
 use crate::app::{AppAction, AppState, SnippetPopup, ViewState};
-use crate::event::{Alert, AlertSeverity, DetectedService, Metrics, ServiceKind, ServiceStatus};
+use crate::event::{DetectedService, Metrics, ServiceKind};
 use crate::ssh::client::ConnectionStatus;
 use crate::ssh::metrics::threshold_color;
 use crate::ui::theme::Theme;
@@ -30,11 +30,11 @@ use crate::ui::theme::Theme;
 /// ║ Host: 192.168.1.10:22   User: deploy   Up: 43 days         ║
 /// ║ OS: Ubuntu 22.04 LTS    Kernel: 5.15.0-91                  ║
 /// ╠═════════════════════════════════════════════════════════════╣
-/// ║ METRICS                          │ ALERTS                   ║
-/// ║ CPU: ████████░░░░ 73%            │ ⚠ nginx-proxy restart x5 ║
-/// ║ RAM: ██████░░░░░░ 2.1/4 GB      │ ⚠ Disk /var > 85%        ║
-/// ║ DSK: ████████░░░░ 61%           │                          ║
-/// ║ Load: 2.4 1.8 1.2               │                          ║
+/// ║ METRICS                                                    ║
+/// ║ CPU: ████████░░░░ 73%                                       ║
+/// ║ RAM: ██████░░░░░░ 2.1/4 GB                                 ║
+/// ║ DSK: ████████░░░░ 61%                                      ║
+/// ║ Load: 2.4 1.8 1.2                                          ║
 /// ╠═════════════════════════════════════════════════════════════╣
 /// ║ TOP PROCESSES                                               ║
 /// ║  1. firefox            cpu 12.3%   mem  4.5%                ║
@@ -43,10 +43,6 @@ use crate::ui::theme::Theme;
 /// ║ 🐳 Docker         8 running, 1 stopped    [containers: F4] ║
 /// ║ 🌐 Nginx          active, 0 errors/5min   [logs: F5]       ║
 /// ║ 🐘 PostgreSQL 16  repl lag: 2.3s          [queries: F6]    ║
-/// ╠═════════════════════════════════════════════════════════════╣
-/// ║ SUGGESTED ACTIONS                                           ║
-/// ║ [ ] Docker: restart nginx-proxy                             ║
-/// ║ [ ] Check Nginx upstream config                             ║
 /// ╚═════════════════════════════════════════════════════════════╝
 /// ```
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState) {
@@ -77,7 +73,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
     let metrics = state.metrics.get(&host.name);
     let status = state.connection_statuses.get(&host.name);
     let services = state.services.get(&host.name);
-    let alerts = state.alerts.get(&host.name);
 
     // Main border with title
     let title = format!(" {} ", host.name);
@@ -91,21 +86,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Layout: hints (1) + header (2) + sep + metrics/alerts (6) + sep
-    // + top processes (5) + sep + services (flex) + sep + actions (flex)
+    // Layout: hints (1) + header (2) + sep + metrics (6) + sep
+    // + top processes (5) + sep + services (flex)
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // Key hints header
             Constraint::Length(2), // Header (host info + OS info)
             Constraint::Length(1), // Separator
-            Constraint::Length(6), // Metrics + Alerts (2 columns)
+            Constraint::Length(6), // Metrics
             Constraint::Length(1), // Separator
             Constraint::Length(5), // Top processes
             Constraint::Length(1), // Separator
             Constraint::Min(5),    // Services section
-            Constraint::Length(1), // Separator
-            Constraint::Min(3),    // Suggested actions
         ])
         .split(inner);
 
@@ -118,14 +111,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
     // Separator
     render_separator(frame, sections[2], inner.width, &view.theme);
 
-    // Metrics + Alerts (2 columns)
-    render_metrics_alerts(
-        frame,
-        sections[3],
-        metrics,
-        alerts.map(|v| v.as_slice()),
-        &view.theme,
-    );
+    // Metrics
+    render_metrics_alerts(frame, sections[3], metrics, &view.theme);
 
     // Separator
     render_separator(frame, sections[4], inner.width, &view.theme);
@@ -145,14 +132,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
                 .style(Style::default().fg(view.theme.text_muted)),
             sections[7],
         );
-    }
-
-    // Separator
-    render_separator(frame, sections[8], inner.width, &view.theme);
-
-    // Suggested actions
-    if let Some(alts) = alerts {
-        render_suggested_actions(frame, sections[9], alts, &view.theme);
     }
 }
 
@@ -222,27 +201,11 @@ fn render_header(
 }
 
 // ---------------------------------------------------------------------------
-// Metrics + Alerts (2-column layout)
+// Metrics
 // ---------------------------------------------------------------------------
 
-fn render_metrics_alerts(
-    frame: &mut Frame,
-    area: Rect,
-    metrics: Option<&Metrics>,
-    alerts: Option<&[Alert]>,
-    theme: &Theme,
-) {
-    // Split into 2 columns
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
-    // Left: Metrics
-    render_metrics_column(frame, columns[0], metrics, theme);
-
-    // Right: Alerts
-    render_alerts_column(frame, columns[1], alerts, theme);
+fn render_metrics_alerts(frame: &mut Frame, area: Rect, metrics: Option<&Metrics>, theme: &Theme) {
+    render_metrics_column(frame, area, metrics, theme);
 }
 
 fn render_metrics_column(frame: &mut Frame, area: Rect, metrics: Option<&Metrics>, theme: &Theme) {
@@ -340,56 +303,6 @@ fn render_metrics_column(frame: &mut Frame, area: Rect, metrics: Option<&Metrics
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-fn render_alerts_column(frame: &mut Frame, area: Rect, alerts: Option<&[Alert]>, theme: &Theme) {
-    let mut lines = vec![Line::from(Span::styled(
-        "ALERTS",
-        Style::default()
-            .fg(theme.title)
-            .add_modifier(Modifier::BOLD),
-    ))];
-
-    if let Some(alts) = alerts {
-        if alts.is_empty() {
-            lines.push(Line::from(Span::styled(
-                " No alerts",
-                Style::default().fg(theme.text_success),
-            )));
-        } else {
-            // Show up to 5 alerts, prioritize critical first
-            let mut sorted = alts.to_vec();
-            sorted.sort_by(|a, b| b.severity.cmp(&a.severity));
-
-            for alert in sorted.iter().take(5) {
-                let (icon, color) = match alert.severity {
-                    AlertSeverity::Critical => ("⚠", Color::Red),
-                    AlertSeverity::Warning => ("⚠", Color::Yellow),
-                    AlertSeverity::Info => ("ℹ", Color::Cyan),
-                };
-
-                lines.push(Line::from(vec![
-                    Span::styled(format!(" {}", icon), Style::default().fg(color)),
-                    Span::raw(" "),
-                    Span::styled(alert.message.clone(), Style::default().fg(color)),
-                ]));
-            }
-
-            if alts.len() > 5 {
-                lines.push(Line::from(Span::styled(
-                    format!(" ... and {} more", alts.len() - 5),
-                    Style::default().fg(theme.text_muted),
-                )));
-            }
-        }
-    } else {
-        lines.push(Line::from(Span::styled(
-            " (no discovery data)",
-            Style::default().fg(theme.text_muted),
-        )));
-    }
-
-    frame.render_widget(Paragraph::new(lines), area);
-}
-
 // ---------------------------------------------------------------------------
 // Services section
 // ---------------------------------------------------------------------------
@@ -459,13 +372,8 @@ fn render_services(frame: &mut Frame, area: Rect, services: &[DetectedService], 
         )));
     } else {
         for service in services.iter() {
-            let (icon, base_color) = service_icon(&service.kind);
-            let color = match &service.status {
-                ServiceStatus::Critical(_) => Color::Red,
-                ServiceStatus::Degraded(_) => Color::Yellow,
-                ServiceStatus::Healthy => base_color,
-                ServiceStatus::Unknown => Color::DarkGray,
-            };
+            let (icon, _) = service_icon(&service.kind);
+            let color = Color::DarkGray;
 
             let service_name = service_name_display(&service.kind);
             let status_info = service_status_display(service);
@@ -537,17 +445,10 @@ fn service_status_display(service: &DetectedService) -> String {
             let mut running = 0i64;
             let mut stopped = 0i64;
             for metric in &service.metrics {
+                let MetricValue::Integer(n) = metric.value;
                 match metric.name.as_str() {
-                    "containers_running" => {
-                        if let MetricValue::Integer(n) = metric.value {
-                            running = n;
-                        }
-                    }
-                    "containers_stopped" => {
-                        if let MetricValue::Integer(n) = metric.value {
-                            stopped = n;
-                        }
-                    }
+                    "containers_running" => running = n,
+                    "containers_stopped" => stopped = n,
                     _ => {}
                 }
             }
@@ -560,14 +461,9 @@ fn service_status_display(service: &DetectedService) -> String {
         ServiceKind::PostgreSQL => {
             for metric in &service.metrics {
                 if metric.name == "replication_lag_seconds" {
-                    if let MetricValue::Integer(lag) = metric.value {
-                        if lag > 0 {
-                            return format!("repl lag: {}s", lag);
-                        }
-                    } else if let MetricValue::Float(lag) = metric.value {
-                        if lag > 0.0 {
-                            return format!("repl lag: {:.1}s", lag);
-                        }
+                    let MetricValue::Integer(lag) = metric.value;
+                    if lag > 0 {
+                        return format!("repl lag: {}s", lag);
                     }
                 }
             }
@@ -576,9 +472,8 @@ fn service_status_display(service: &DetectedService) -> String {
         ServiceKind::Nginx => {
             for metric in &service.metrics {
                 if metric.name == "recent_502_504_errors" {
-                    if let MetricValue::Integer(errors) = metric.value {
-                        return format!("active, {} errors/5min", errors);
-                    }
+                    let MetricValue::Integer(errors) = metric.value;
+                    return format!("active, {} errors/5min", errors);
                 }
             }
             "active, 0 errors/5min".to_string()
@@ -587,9 +482,8 @@ fn service_status_display(service: &DetectedService) -> String {
             let mut mem_used = 0i64;
             for metric in &service.metrics {
                 if metric.name.as_str() == "memory_used_mb" {
-                    if let MetricValue::Integer(mem) = metric.value {
-                        mem_used = mem;
-                    }
+                    let MetricValue::Integer(mem) = metric.value;
+                    mem_used = mem;
                 }
             }
             if mem_used > 0 {
@@ -602,9 +496,8 @@ fn service_status_display(service: &DetectedService) -> String {
             let mut node_processes = 0i64;
             for metric in &service.metrics {
                 if metric.name == "node_processes" {
-                    if let MetricValue::Integer(count) = metric.value {
-                        node_processes = count;
-                    }
+                    let MetricValue::Integer(count) = metric.value;
+                    node_processes = count;
                 }
             }
             if node_processes > 0 {
@@ -619,41 +512,6 @@ fn service_status_display(service: &DetectedService) -> String {
 // ---------------------------------------------------------------------------
 // Suggested Actions section
 // ---------------------------------------------------------------------------
-
-fn render_suggested_actions(frame: &mut Frame, area: Rect, alerts: &[Alert], theme: &Theme) {
-    let mut lines = vec![Line::from(Span::styled(
-        " SUGGESTED ACTIONS",
-        Style::default()
-            .fg(theme.title)
-            .add_modifier(Modifier::BOLD),
-    ))];
-
-    // Filter alerts that have suggested actions
-    let mut actions_with_suggestions = Vec::new();
-    for alert in alerts.iter() {
-        if alert.suggested_action.is_some() {
-            actions_with_suggestions.push(alert);
-        }
-    }
-
-    if actions_with_suggestions.is_empty() {
-        lines.push(Line::from(Span::styled(
-            " No suggested actions",
-            Style::default().fg(theme.text_muted),
-        )));
-    } else {
-        for action in actions_with_suggestions.iter().take(5) {
-            if let Some(suggestion) = &action.suggested_action {
-                lines.push(Line::from(vec![
-                    Span::raw(" [ ] "),
-                    Span::styled(suggestion.clone(), Style::default().fg(theme.accent)),
-                ]));
-            }
-        }
-    }
-
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
-}
 
 // ---------------------------------------------------------------------------
 // Separator

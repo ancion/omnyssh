@@ -53,14 +53,10 @@ pub enum AppAction {
     ConnectFromDetailView,
     /// Show Quick View popup for a specific service (keys 4-9 in Detail View).
     ShowQuickView(ServiceKind),
-    /// Close the Quick View popup.
-    CloseQuickView,
 
     // -----------------------------------------------------------------------
     // Snippets actions
     // -----------------------------------------------------------------------
-    /// Reload snippets from disk in a background task.
-    ReloadSnippets,
     /// Open the snippet add form on the Snippets screen.
     OpenSnippetAdd,
     /// Open the snippet edit form for the selected snippet.
@@ -138,8 +134,6 @@ pub enum AppAction {
     // -----------------------------------------------------------------------
     // Terminal multi-session actions
     // -----------------------------------------------------------------------
-    /// Open a new PTY tab for `AppState.hosts[host_idx]` and switch to Terminal screen.
-    TermOpenTab(usize),
     /// Open the host-picker popup for creating a new terminal tab (Ctrl+T).
     TermOpenHostPicker,
     /// Navigate the host-picker cursor. `+1` = down, `-1` = up.

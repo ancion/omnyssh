@@ -1,6 +1,3 @@
-// Suppress dead_code warnings for stub/future-stage modules.
-#![allow(dead_code)]
-
 use clap::Parser;
 
 mod app;

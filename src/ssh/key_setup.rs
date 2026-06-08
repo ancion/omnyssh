@@ -43,8 +43,6 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(15);
 pub enum KeyType {
     /// Ed25519 (recommended, modern, fast).
     Ed25519,
-    /// RSA 4096-bit (compatibility with older systems).
-    Rsa4096,
 }
 
 impl KeyType {
@@ -52,7 +50,6 @@ impl KeyType {
     pub fn extension(&self) -> &'static str {
         match self {
             KeyType::Ed25519 => "ed25519",
-            KeyType::Rsa4096 => "rsa",
         }
     }
 }
@@ -278,7 +275,6 @@ pub async fn generate_key_pair(host_name: &str, key_type: KeyType) -> Result<(Pa
 
     let key_type_arg = match key_type {
         KeyType::Ed25519 => "ed25519",
-        KeyType::Rsa4096 => "rsa",
     };
 
     let mut keygen_cmd = tokio::process::Command::new("ssh-keygen");
@@ -291,11 +287,6 @@ pub async fn generate_key_pair(host_name: &str, key_type: KeyType) -> Result<(Pa
         .arg("") // No passphrase
         .arg("-C")
         .arg(format!("omnyssh-{}", host_name)); // Comment
-
-    // For RSA, specify 4096 bits
-    if matches!(key_type, KeyType::Rsa4096) {
-        keygen_cmd.arg("-b").arg("4096");
-    }
 
     let keygen_output = keygen_cmd
         .output()

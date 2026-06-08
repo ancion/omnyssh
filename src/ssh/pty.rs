@@ -112,9 +112,7 @@ async fn session_task(
     let (_handle, mut channel) = match result {
         Ok(pair) => pair,
         Err(e) => {
-            let _ = tx
-                .send(AppEvent::Error(host.name.clone(), format!("Terminal: {e}")))
-                .await;
+            let _ = tx.send(AppEvent::Error(format!("Terminal: {e}"))).await;
             let _ = tx.send(AppEvent::PtyExited(id)).await;
             return;
         }

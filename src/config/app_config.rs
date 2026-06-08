@@ -225,8 +225,6 @@ pub struct ParsedKeybindings {
     pub quit: KeyCode,
     /// Key that activates fuzzy search (default: `/`).
     pub search: KeyCode,
-    /// Key that confirms / connects (default: `Enter`).
-    pub connect: KeyCode,
     /// Key that switches to the Dashboard screen (default: `F1`).
     pub dashboard: KeyCode,
     /// Key that switches to the File Manager screen (default: `F2`).
@@ -251,8 +249,6 @@ impl ParsedKeybindings {
                 .unwrap_or_else(|| parse_keycode(&defaults.quit).expect("default quit")),
             search: parse_keycode(&cfg.search)
                 .unwrap_or_else(|| parse_keycode(&defaults.search).expect("default search")),
-            connect: parse_keycode(&cfg.connect)
-                .unwrap_or_else(|| parse_keycode(&defaults.connect).expect("default connect")),
             dashboard: parse_keycode(&cfg.dashboard)
                 .unwrap_or_else(|| parse_keycode(&defaults.dashboard).expect("default dashboard")),
             file_manager: parse_keycode(&cfg.file_manager).unwrap_or_else(|| {

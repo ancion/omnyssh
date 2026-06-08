@@ -119,10 +119,6 @@ pub struct AppState {
     pub snippets: Vec<Snippet>,
     /// Detected services per host.
     pub services: HashMap<String, Vec<crate::event::DetectedService>>,
-    /// Active alerts per host.
-    pub alerts: HashMap<String, Vec<crate::event::Alert>>,
-    /// Discovery status per host.
-    pub discovery_status: HashMap<String, crate::event::DiscoveryStatus>,
 }
 
 // ---------------------------------------------------------------------------
@@ -151,11 +147,6 @@ pub struct ViewState {
     pub keybindings: ParsedKeybindings,
     /// Monotonically-incrementing tick counter for animations (e.g. spinner).
     pub tick_count: u64,
-    /// Quick View popup state for Detail View service quick views.
-    /// Contains the service kind if a Quick View is currently open.
-    pub quick_view: Option<ServiceKind>,
-    /// Scroll offset for Quick View popup content.
-    pub quick_view_scroll: usize,
     /// Startup update-notification popup, shown when a newer release exists.
     pub update_popup: Option<UpdatePopup>,
 }
@@ -175,8 +166,6 @@ impl ViewState {
             theme: Theme::default(),
             keybindings: ParsedKeybindings::default(),
             tick_count: 0,
-            quick_view: None,
-            quick_view_scroll: 0,
             update_popup: None,
         }
     }
@@ -537,26 +526,10 @@ impl App {
                 // ----------------------------------------------------------------
                 AppEvent::DiscoveryQuickScanDone(host_name, services) => {
                     let mut state = self.state.write().await;
-                    state.services.insert(host_name.clone(), services);
-                    state
-                        .discovery_status
-                        .insert(host_name, crate::event::DiscoveryStatus::QuickScanDone);
-                }
-
-                AppEvent::DiscoveryDeepProbeDone(host_name, services) => {
-                    let mut state = self.state.write().await;
-                    state.services.insert(host_name.clone(), services);
-                    state
-                        .discovery_status
-                        .insert(host_name, crate::event::DiscoveryStatus::DeepProbeDone);
+                    state.services.insert(host_name, services);
                 }
 
                 AppEvent::DiscoveryFailed(host_name, error) => {
-                    let mut state = self.state.write().await;
-                    state.discovery_status.insert(
-                        host_name.clone(),
-                        crate::event::DiscoveryStatus::Failed(error.clone()),
-                    );
                     tracing::debug!(host = %host_name, error = %error, "discovery failed");
 
                     // Show error notification in status bar (extract only the essential error message)
@@ -567,15 +540,6 @@ impl App {
                         "Discovery failed for '{}': {}",
                         host_name, short_error
                     ));
-                }
-
-                AppEvent::AlertNew(host_name, alert) => {
-                    let mut state = self.state.write().await;
-                    state
-                        .alerts
-                        .entry(host_name)
-                        .or_insert_with(Vec::new)
-                        .push(alert);
                 }
 
                 // ----------------------------------------------------------------
@@ -751,7 +715,7 @@ impl App {
                     }
                 }
 
-                AppEvent::Error(_, msg) => {
+                AppEvent::Error(msg) => {
                     self.view.status_message = Some(msg);
                 }
 
@@ -810,10 +774,7 @@ impl App {
                     self.view.status_message = Some(format!("Connected to '{}'", host_name));
                 }
 
-                AppEvent::SftpDisconnected {
-                    host_name: _,
-                    reason,
-                } => {
+                AppEvent::SftpDisconnected { reason } => {
                     self.sftp_manager = None;
                     self.view.file_manager.connected_host = None;
                     self.view.file_manager.sftp_connecting = false;
@@ -847,7 +808,7 @@ impl App {
                     self.view.file_manager.preview_path = Some(path);
                 }
 
-                AppEvent::SftpOpDone { kind: _, result } => {
+                AppEvent::SftpOpDone { result } => {
                     self.view.file_manager.pending_ops =
                         self.view.file_manager.pending_ops.saturating_sub(1);
                     let remaining = self.view.file_manager.pending_ops;

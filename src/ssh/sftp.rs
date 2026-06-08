@@ -6,8 +6,6 @@
 //! All operations are non-blocking from the UI perspective.
 //! Progress is reported via [`AppEvent::FileTransferProgress`].
 
-use std::time::SystemTime;
-
 use anyhow::Context;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
@@ -31,12 +29,6 @@ pub struct FileEntry {
     pub size: u64,
     /// `true` when this entry is a directory.
     pub is_dir: bool,
-    /// `true` when this entry is a symbolic link.
-    pub is_symlink: bool,
-    /// Unix permission bits (e.g. 0o755). `0` if unavailable.
-    pub permissions: u32,
-    /// Last-modified timestamp, if available.
-    pub modified: Option<SystemTime>,
 }
 
 // ---------------------------------------------------------------------------
@@ -69,21 +61,6 @@ pub enum SftpCommand {
     ReadPreview(String),
     /// Shut down the task gracefully.
     Disconnect,
-}
-
-// ---------------------------------------------------------------------------
-// SftpOpKind — identifies which mutating operation completed
-// ---------------------------------------------------------------------------
-
-/// Identifies which mutating SFTP operation completed (used in
-/// [`AppEvent::SftpOpDone`]).
-#[derive(Debug, Clone, Copy)]
-pub enum SftpOpKind {
-    Delete,
-    MkDir,
-    Rename,
-    Upload,
-    Download,
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +109,7 @@ impl SftpManager {
                     host_name: host_name.clone(),
                 })
                 .await;
-            sftp_task_loop(session, sftp, cmd_rx, event_tx.clone(), host_name.clone()).await;
+            sftp_task_loop(session, sftp, cmd_rx, event_tx.clone()).await;
             tracing::info!("SFTP task for '{}' exited", host_name);
         });
 
@@ -159,7 +136,6 @@ async fn sftp_task_loop(
     sftp: russh_sftp::client::SftpSession,
     mut cmd_rx: mpsc::Receiver<SftpCommand>,
     event_tx: mpsc::Sender<AppEvent>,
-    host_name: String,
 ) {
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
@@ -172,7 +148,6 @@ async fn sftp_task_loop(
                 Err(e) => {
                     let _ = event_tx
                         .send(AppEvent::SftpDisconnected {
-                            host_name: host_name.clone(),
                             reason: format!("ListDir failed: {e}"),
                         })
                         .await;
@@ -187,12 +162,7 @@ async fn sftp_task_loop(
                 let result = do_download(&sftp, &remote, &local, transfer_id, &event_tx)
                     .await
                     .map_err(|e| e.to_string());
-                let _ = event_tx
-                    .send(AppEvent::SftpOpDone {
-                        kind: SftpOpKind::Download,
-                        result,
-                    })
-                    .await;
+                let _ = event_tx.send(AppEvent::SftpOpDone { result }).await;
             }
 
             SftpCommand::Upload {
@@ -203,12 +173,7 @@ async fn sftp_task_loop(
                 let result = do_upload(&local, &sftp, &remote, transfer_id, &event_tx)
                     .await
                     .map_err(|e| e.to_string());
-                let _ = event_tx
-                    .send(AppEvent::SftpOpDone {
-                        kind: SftpOpKind::Upload,
-                        result,
-                    })
-                    .await;
+                let _ = event_tx.send(AppEvent::SftpOpDone { result }).await;
             }
 
             SftpCommand::Delete(path) => {
@@ -217,32 +182,17 @@ async fn sftp_task_loop(
                     Ok(()) => Ok(()),
                     Err(_) => sftp.remove_dir(&path).await.map_err(|e| e.to_string()),
                 };
-                let _ = event_tx
-                    .send(AppEvent::SftpOpDone {
-                        kind: SftpOpKind::Delete,
-                        result,
-                    })
-                    .await;
+                let _ = event_tx.send(AppEvent::SftpOpDone { result }).await;
             }
 
             SftpCommand::MkDir(path) => {
                 let result = sftp.create_dir(&path).await.map_err(|e| e.to_string());
-                let _ = event_tx
-                    .send(AppEvent::SftpOpDone {
-                        kind: SftpOpKind::MkDir,
-                        result,
-                    })
-                    .await;
+                let _ = event_tx.send(AppEvent::SftpOpDone { result }).await;
             }
 
             SftpCommand::Rename { from, to } => {
                 let result = sftp.rename(&from, &to).await.map_err(|e| e.to_string());
-                let _ = event_tx
-                    .send(AppEvent::SftpOpDone {
-                        kind: SftpOpKind::Rename,
-                        result,
-                    })
-                    .await;
+                let _ = event_tx.send(AppEvent::SftpOpDone { result }).await;
             }
 
             SftpCommand::ReadPreview(path) => {
@@ -286,9 +236,6 @@ async fn do_list_dir(
             path: parent_str.to_string(),
             size: 0,
             is_dir: true,
-            is_symlink: false,
-            permissions: 0,
-            modified: None,
         });
     }
 
@@ -308,9 +255,6 @@ async fn do_list_dir(
             path: full_path,
             size: meta.size.unwrap_or(0),
             is_dir: ft.is_dir(),
-            is_symlink: ft.is_symlink(),
-            permissions: meta.permissions.unwrap_or(0),
-            modified: meta.modified().ok(),
         });
     }
 
@@ -479,9 +423,6 @@ pub async fn list_local_dir(path: &str) -> anyhow::Result<Vec<FileEntry>> {
             path: parent_str.to_string(),
             size: 0,
             is_dir: true,
-            is_symlink: false,
-            permissions: 0,
-            modified: None,
         });
     }
 
@@ -492,21 +433,8 @@ pub async fn list_local_dir(path: &str) -> anyhow::Result<Vec<FileEntry>> {
     {
         let file_type = entry.file_type().await.ok();
         let is_dir = file_type.as_ref().map(|ft| ft.is_dir()).unwrap_or(false);
-        let is_symlink = file_type
-            .as_ref()
-            .map(|ft| ft.is_symlink())
-            .unwrap_or(false);
         let meta = entry.metadata().await.ok();
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-        let modified = meta.as_ref().and_then(|m| m.modified().ok());
-
-        #[cfg(unix)]
-        let permissions = {
-            use std::os::unix::fs::MetadataExt;
-            meta.as_ref().map(|m| m.mode()).unwrap_or(0)
-        };
-        #[cfg(not(unix))]
-        let permissions = 0u32;
 
         let name = entry.file_name().to_string_lossy().into_owned();
         let path_str = entry.path().to_string_lossy().into_owned();
@@ -516,9 +444,6 @@ pub async fn list_local_dir(path: &str) -> anyhow::Result<Vec<FileEntry>> {
             path: path_str,
             size,
             is_dir,
-            is_symlink,
-            permissions,
-            modified,
         });
     }
 

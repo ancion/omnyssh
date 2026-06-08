@@ -153,7 +153,6 @@ impl App {
                 if let Some(host) = state.hosts.get(idx).cloned() {
                     // Transition to progress popup.
                     self.view.host_list.popup = Some(HostPopup::KeySetupProgress {
-                        host_idx: idx,
                         host_name: host.name.clone(),
                         current_step: None,
                     });
@@ -283,27 +282,9 @@ impl App {
                 self.execute_quick_view(service_kind).await;
             }
 
-            AppAction::CloseQuickView => {
-                // Close Quick View popup
-                self.view.quick_view = None;
-                self.view.quick_view_scroll = 0;
-            }
-
             // ---------------------------------------------------------------
             // Snippet actions
             // ---------------------------------------------------------------
-            AppAction::ReloadSnippets => {
-                let tx = self.event_tx.clone();
-                tokio::spawn(async move {
-                    match config::snippets::load_snippets() {
-                        Ok(s) => {
-                            let _ = tx.send(AppEvent::SnippetsLoaded(s)).await;
-                        }
-                        Err(e) => tracing::warn!("Snippet reload failed: {}", e),
-                    }
-                });
-            }
-
             AppAction::OpenSnippetAdd => {
                 self.view.snippets_view.popup = Some(SnippetPopup::Add(SnippetForm::empty()));
             }
@@ -580,10 +561,6 @@ impl App {
             // ---------------------------------------------------------------
             // Terminal multi-session actions
             // ---------------------------------------------------------------
-            AppAction::TermOpenTab(host_idx) => {
-                self.open_term_tab(host_idx).await;
-            }
-
             AppAction::TermInput(bytes) => {
                 let active_id = self.view.terminal_view.active_session_id();
                 if let (Some(id), Some(mgr)) = (active_id, &mut self.pty_manager) {

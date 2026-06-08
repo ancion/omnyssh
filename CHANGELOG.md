@@ -12,6 +12,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Bug Fixes
 - **docs.rs documentation build fixed**: The build script wrote the generated man page into the source tree (`doc/omny.1`), which fails on docs.rs because it mounts the sources read-only. The man page is now skipped when building on docs.rs (detected via the `DOCS_RS` environment variable); normal builds still generate and check it in as before.
 
+### Internal
+- **Dead-code cleanup**: Removed the unimplemented Alerts/Deep Probe subsystem (backend and UI) and a range of unused items — enum variants, struct fields, helpers, and theme colors. No user-facing behavior changes: METRICS and SERVICES on the detail page, the file manager, and the terminal work as before. The crate-level `#![allow(dead_code)]` was dropped so the compiler now catches dead code on its own.
+
 ---
 
 ## 1.0.4 — 2026-05-29

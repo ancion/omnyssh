@@ -34,43 +34,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, view: &ViewState)
         };
     }
 
-    // Show critical alerts first.
-    // Find the most critical alert across all hosts.
-    let critical_alert = state
-        .alerts
-        .values()
-        .flatten()
-        .find(|a| matches!(a.severity, crate::event::AlertSeverity::Critical));
-
-    if let Some(alert) = critical_alert {
-        let (icon, color) = match alert.severity {
-            crate::event::AlertSeverity::Critical => ("⚠", Color::Red),
-            crate::event::AlertSeverity::Warning => ("⚠", Color::Yellow),
-            crate::event::AlertSeverity::Info => ("ℹ", Color::Cyan),
-        };
-
-        let mut spans = vec![
-            Span::styled(
-                format!(" {} ", icon),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(format!("{} ", alert.message), Style::default().fg(color)),
-        ];
-
-        if let Some(action) = &alert.suggested_action {
-            spans.push(Span::styled(
-                format!(" → {}", action),
-                Style::default().fg(Color::DarkGray),
-            ));
-        }
-
-        frame.render_widget(
-            Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::Reset)),
-            area,
-        );
-        return;
-    }
-
     // If a status message is set, show it instead of key hints.
     if let Some(msg) = &view.status_message {
         let line = Line::from(Span::styled(
