@@ -4,6 +4,7 @@ mod app;
 mod cli;
 mod config;
 mod event;
+mod keybindings;
 mod ssh;
 mod term_input;
 mod ui;

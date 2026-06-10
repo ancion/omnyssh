@@ -16,7 +16,8 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::{mpsc, RwLock};
 
 use crate::config;
-use crate::config::app_config::{AppConfig, ParsedKeybindings};
+use crate::config::app_config::AppConfig;
+use crate::keybindings::ParsedKeybindings;
 use crate::config::snippets::Snippet;
 use crate::event::{spawn_event_thread, AppEvent, Metrics, ServiceKind, TransferId};
 use crate::ssh::client::{ConnectionStatus, Host};
