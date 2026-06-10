@@ -37,6 +37,16 @@ cargo build
 The first build fetches all dependencies from crates.io and may take a few
 minutes.  Subsequent builds are incremental.
 
+**Repository layout:** the repo is a cargo workspace with two crates:
+
+| Crate | Path | Contents |
+|-------|------|----------|
+| `omnyssh-core` | `crates/omnyssh-core` | SSH engine, configs, metrics, domain events, updater — no UI dependencies |
+| `omnyssh` | `crates/omnyssh` | The TUI application (binary `omny`), depends on `omnyssh-core` |
+
+All `cargo` commands below work from the repository root and operate on the
+whole workspace; use `-p omnyssh-core` / `-p omnyssh` to target one crate.
+
 **Recommended tools:**
 
 ```bash
@@ -77,12 +87,13 @@ cargo watch -x run
 # All tests
 cargo test
 
-# Only unit tests (no integration tests)
-cargo test --lib
+# Only unit tests of one crate (no integration tests)
+cargo test -p omnyssh-core --lib
+cargo test -p omnyssh --lib
 
-# Only integration tests in tests/
-cargo test --test metrics_parser
-cargo test --test ssh_config_parser
+# Only integration tests in crates/omnyssh-core/tests/
+cargo test -p omnyssh-core --test metrics_parser
+cargo test -p omnyssh-core --test ssh_config_parser
 
 # With output (useful when debugging a failing test)
 cargo test -- --nocapture
@@ -105,6 +116,9 @@ These conventions are enforced in code review and by CI.
 
 ### Architecture
 
+- **The engine stays UI-free.**  Code in `crates/omnyssh-core` must not depend
+  on terminal-rendering, input, or CLI crates; frontend-specific types and
+  logic belong in `crates/omnyssh`.
 - **Never block the UI thread with SSH operations.**  All network I/O runs in
   background `tokio::spawn` tasks and communicates via `mpsc` channels.
 - **Use `Arc<RwLock<T>>` for shared state**, not `Arc<Mutex<T>>`.  The UI

@@ -1,0 +1,50 @@
+[package]
+name = "omnyssh"
+version.workspace = true
+edition.workspace = true
+description = "TUI SSH dashboard & server manager"
+license.workspace = true
+repository.workspace = true
+keywords = ["ssh", "tui", "terminal", "devops"]
+categories = ["command-line-utilities"]
+
+[lib]
+name = "omnyssh"
+path = "src/lib.rs"
+
+[[bin]]
+name = "omny"
+path = "src/main.rs"
+
+[dependencies]
+omnyssh-core = { path = "../omnyssh-core", version = "1.1.0" }
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+tokio = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Cross-platform paths (P-CROSS-01)
+dirs = { workspace = true }
+
+# Feature B: Auto SSH Key Setup — timestamp generation
+chrono = { workspace = true }
+
+# Terminal emulator — renders the vt100 screen model provided by the core
+vt100 = { package = "vt100-omnyssh", version = "0.15" }
+
+[build-dependencies]
+clap = { version = "4", features = ["derive"] }
+clap_mangen = "0.2"

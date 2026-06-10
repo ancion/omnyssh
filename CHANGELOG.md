@@ -7,6 +7,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## 1.1.0 — 2026-06-10
+
+### Internal
+- **Repository converted to a cargo workspace; the engine now lives in its own crate**: The SSH engine, host/snippet/app configuration, metrics parsers, domain events, and the self-updater moved into the new `omnyssh-core` library crate (`crates/omnyssh-core`), which has no dependency on terminal-UI or CLI crates. The TUI application keeps the `omnyssh` package name and the `omny` binary (`crates/omnyssh`) and consumes the core as a regular dependency. This prepares the architecture for additional frontends (e.g. a GUI) without duplicating the engine.
+  - The event bus is split: background tasks emit `CoreEvent` values; the TUI wraps them into its own `AppEvent` stream alongside input events.
+  - `threshold_color` was replaced by a UI-agnostic `ThresholdLevel` in the core; the colour mapping moved to the TUI theme module.
+  - Keybinding parsing (config strings → key codes) and PTY key-to-bytes translation moved from the engine into the TUI crate; the core PTY API accepts raw bytes only.
+  - Removed the unused `nucleo` dependency.
+  - No user-facing changes: behavior, appearance, the binary name, and install paths are unchanged.
+
+---
+
 ## 1.0.5 — 2026-06-07
 
 ### Bug Fixes

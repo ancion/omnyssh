@@ -366,6 +366,10 @@ Set the theme in `config.toml`, or pass `--theme` once — it is written back to
 
 Contributions are welcome! Please read [**CONTRIBUTING.md**](CONTRIBUTING.md) for development setup, code conventions, and the PR checklist.
 
+The repository is a cargo workspace: the frontend-agnostic engine lives in
+`crates/omnyssh-core`, and the TUI application (binary `omny`) lives in
+`crates/omnyssh`.
+
 ---
 
 ## License

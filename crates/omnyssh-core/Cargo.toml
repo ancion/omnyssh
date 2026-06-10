@@ -1,0 +1,51 @@
+[package]
+name = "omnyssh-core"
+version.workspace = true
+edition.workspace = true
+description = "SSH engine, configs, metrics, and updater powering OmnySSH frontends"
+license.workspace = true
+repository.workspace = true
+keywords = ["ssh", "devops"]
+categories = ["network-programming"]
+
+[dependencies]
+tokio = { workspace = true }
+
+# SSH
+russh = "0.46"
+russh-sftp = "2.0"
+russh-keys = "0.46"
+
+# Serialization
+serde = { workspace = true }
+toml = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Required for implementing russh::client::Handler (uses #[async_trait])
+async-trait = "0.1"
+
+# Feature B: Auto SSH Key Setup — timestamp generation
+chrono = { workspace = true }
+
+# Cross-platform paths (P-CROSS-01)
+dirs = { workspace = true }
+
+# Terminal emulator — vt100 screen model (PTY is provided by russh channels)
+vt100 = { package = "vt100-omnyssh", version = "0.15" }
+
+# Update checker — GitHub Releases query, archive extraction, self-replace
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+semver = "1"
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
+self-replace = "1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
