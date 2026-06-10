@@ -1622,7 +1622,15 @@ dependencies = [
 name = "omnyssh-core"
 version = "1.1.0"
 dependencies = [
+ "anyhow",
  "dirs",
+ "flate2",
+ "reqwest",
+ "self-replace",
+ "semver",
+ "serde",
+ "sha2",
+ "tar",
  "vt100-omnyssh",
 ]
 

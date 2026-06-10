@@ -8,7 +8,6 @@ mod keybindings;
 mod ssh;
 mod term_input;
 mod ui;
-mod update;
 mod utils;
 
 #[tokio::main]

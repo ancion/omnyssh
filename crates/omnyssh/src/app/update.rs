@@ -43,7 +43,7 @@ pub enum UpdatePopupPhase {
 #[derive(Debug, Clone)]
 pub struct UpdatePopup {
     /// The release that triggered the popup.
-    pub info: crate::update::UpdateInfo,
+    pub info: omnyssh_core::update::UpdateInfo,
     /// Current lifecycle phase.
     pub phase: UpdatePopupPhase,
 }
@@ -104,7 +104,7 @@ impl App {
                 }
                 let tx = self.core_tx.clone();
                 tokio::spawn(async move {
-                    let result = crate::update::perform_update(&info)
+                    let result = omnyssh_core::update::perform_update(&info)
                         .await
                         .map_err(|e| e.to_string());
                     let _ = tx.send(CoreEvent::UpdateInstalled(result)).await;

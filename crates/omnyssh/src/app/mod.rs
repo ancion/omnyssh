@@ -318,7 +318,7 @@ impl App {
             let tx = self.core_tx.clone();
             let skip_version = self.config.update.skip_version.clone();
             tokio::spawn(async move {
-                if let Some(info) = crate::update::check().await {
+                if let Some(info) = omnyssh_core::update::check().await {
                     if info.latest != skip_version {
                         let _ = tx.send(CoreEvent::UpdateAvailable(info)).await;
                     }

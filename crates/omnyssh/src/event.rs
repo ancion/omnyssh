@@ -161,7 +161,7 @@ pub enum CoreEvent {
     // Update checker events
     // -----------------------------------------------------------------------
     /// A newer release was found on GitHub at startup.
-    UpdateAvailable(crate::update::UpdateInfo),
+    UpdateAvailable(omnyssh_core::update::UpdateInfo),
     /// A self-update finished — `Ok` on success, `Err` with a message on failure.
     UpdateInstalled(Result<(), String>),
 }

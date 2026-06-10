@@ -10,5 +10,4 @@ pub mod keybindings;
 pub mod ssh;
 pub mod term_input;
 pub mod ui;
-pub mod update;
 pub mod utils;
