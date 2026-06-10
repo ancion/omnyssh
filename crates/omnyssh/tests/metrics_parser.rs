@@ -6,9 +6,8 @@
 
 use omnyssh::ssh::metrics::{
     parse_cpu_proc_stat, parse_cpu_top, parse_cpu_top_macos, parse_disk_df, parse_loadavg,
-    parse_ram_free, parse_ram_vmstat, parse_uptime, threshold_color,
+    parse_ram_free, parse_ram_vmstat, parse_uptime, threshold_level, ThresholdLevel,
 };
-use ratatui::style::Color;
 
 // ---------------------------------------------------------------------------
 // CPU
@@ -208,24 +207,24 @@ fn loadavg_empty_returns_none() {
 }
 
 // ---------------------------------------------------------------------------
-// Threshold colour
+// Threshold level
 // ---------------------------------------------------------------------------
 
 #[test]
-fn threshold_green_below_60() {
-    assert_eq!(threshold_color(0.0), Color::Green);
-    assert_eq!(threshold_color(59.9), Color::Green);
+fn threshold_ok_below_60() {
+    assert_eq!(threshold_level(0.0), ThresholdLevel::Ok);
+    assert_eq!(threshold_level(59.9), ThresholdLevel::Ok);
 }
 
 #[test]
-fn threshold_yellow_60_to_85() {
-    assert_eq!(threshold_color(60.0), Color::Yellow);
-    assert_eq!(threshold_color(75.0), Color::Yellow);
-    assert_eq!(threshold_color(85.0), Color::Yellow);
+fn threshold_warn_60_to_85() {
+    assert_eq!(threshold_level(60.0), ThresholdLevel::Warn);
+    assert_eq!(threshold_level(75.0), ThresholdLevel::Warn);
+    assert_eq!(threshold_level(85.0), ThresholdLevel::Warn);
 }
 
 #[test]
-fn threshold_red_above_85() {
-    assert_eq!(threshold_color(85.1), Color::Red);
-    assert_eq!(threshold_color(100.0), Color::Red);
+fn threshold_crit_above_85() {
+    assert_eq!(threshold_level(85.1), ThresholdLevel::Crit);
+    assert_eq!(threshold_level(100.0), ThresholdLevel::Crit);
 }

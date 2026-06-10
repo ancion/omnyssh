@@ -12,27 +12,33 @@
 //! - Uptime: `uptime`
 //! - Load:   `cat /proc/loadavg` (Linux only)
 //!
-//! Colour thresholds:
-//!   Green  < 60 %
-//!   Yellow 60–85 %
-//!   Red    > 85 %
-
-use ratatui::style::Color;
+//! Severity thresholds:
+//!   Ok    < 60 %
+//!   Warn  60–85 %
+//!   Crit  > 85 %
 
 use crate::event::ProcessInfo;
 
 // ---------------------------------------------------------------------------
-// Colour threshold helper (used by card renderer)
+// Severity threshold helper (used by card renderer)
 // ---------------------------------------------------------------------------
 
-/// Returns the display colour for a metric percentage.
-pub fn threshold_color(percent: f64) -> Color {
+/// Severity of a metric percentage. The UI maps each level to a colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThresholdLevel {
+    Ok,
+    Warn,
+    Crit,
+}
+
+/// Returns the severity level for a metric percentage.
+pub fn threshold_level(percent: f64) -> ThresholdLevel {
     if percent < 60.0 {
-        Color::Green
+        ThresholdLevel::Ok
     } else if percent <= 85.0 {
-        Color::Yellow
+        ThresholdLevel::Warn
     } else {
-        Color::Red
+        ThresholdLevel::Crit
     }
 }
 
@@ -610,15 +616,15 @@ mod tests {
         assert!(parse_top_processes("%CPU %MEM COMMAND\n").is_none());
     }
 
-    // ---- Threshold colour ----
+    // ---- Threshold level ----
 
     #[test]
-    fn test_threshold_color() {
-        assert_eq!(threshold_color(0.0), Color::Green);
-        assert_eq!(threshold_color(59.9), Color::Green);
-        assert_eq!(threshold_color(60.0), Color::Yellow);
-        assert_eq!(threshold_color(85.0), Color::Yellow);
-        assert_eq!(threshold_color(85.1), Color::Red);
-        assert_eq!(threshold_color(100.0), Color::Red);
+    fn test_threshold_level() {
+        assert_eq!(threshold_level(0.0), ThresholdLevel::Ok);
+        assert_eq!(threshold_level(59.9), ThresholdLevel::Ok);
+        assert_eq!(threshold_level(60.0), ThresholdLevel::Warn);
+        assert_eq!(threshold_level(85.0), ThresholdLevel::Warn);
+        assert_eq!(threshold_level(85.1), ThresholdLevel::Crit);
+        assert_eq!(threshold_level(100.0), ThresholdLevel::Crit);
     }
 }

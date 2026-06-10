@@ -18,6 +18,20 @@
 
 use ratatui::style::Color;
 
+use crate::ssh::metrics::{threshold_level, ThresholdLevel};
+
+/// Returns the display colour for a metric percentage.
+///
+/// The severity level comes from the metrics module; mapping a level to a
+/// colour is a UI concern and lives here.
+pub fn threshold_color(percent: f64) -> Color {
+    match threshold_level(percent) {
+        ThresholdLevel::Ok => Color::Green,
+        ThresholdLevel::Warn => Color::Yellow,
+        ThresholdLevel::Crit => Color::Red,
+    }
+}
+
 /// A colour palette used throughout the TUI.
 ///
 /// All render functions receive `&ViewState`, which carries the active theme,

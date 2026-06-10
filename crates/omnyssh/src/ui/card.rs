@@ -13,7 +13,7 @@ use ratatui::{
 
 use crate::event::{DetectedService, Metrics, ServiceKind};
 use crate::ssh::client::ConnectionStatus;
-use crate::ssh::metrics::threshold_color;
+use crate::ui::theme::threshold_color;
 use crate::ui::theme::Theme;
 
 // ---------------------------------------------------------------------------
