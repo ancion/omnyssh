@@ -1,79 +1,23 @@
-[package]
-name = "omnyssh"
-version = "1.0.4"
+[workspace]
+resolver = "2"
+members = ["crates/omnyssh"]
+
+[workspace.package]
+version = "1.1.0"
 edition = "2021"
-description = "TUI SSH dashboard & server manager"
 license = "Apache-2.0"
 repository = "https://github.com/timhartmann7/omnyssh"
-keywords = ["ssh", "tui", "terminal", "devops"]
-categories = ["command-line-utilities"]
 
-[lib]
-name = "omnyssh"
-path = "src/lib.rs"
-
-[[bin]]
-name = "omny"
-path = "src/main.rs"
-
-[dependencies]
-# TUI
-ratatui = "0.29"
-crossterm = "0.28"
-
+[workspace.dependencies]
 # Async runtime — explicit features only; avoids pulling in unused tokio subsystems.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "process", "fs", "io-util"] }
-
-# SSH
-russh = "0.46"
-russh-sftp = "2.0"
-russh-keys = "0.46"
-
-# Serialization
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-
-# Fuzzy search
-nucleo = "0.5"
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-appender = "0.2"
-
-# CLI
-clap = { version = "4", features = ["derive"] }
-
-# Error handling
 anyhow = "1"
 thiserror = "2"
-
-# Required for implementing russh::client::Handler (uses #[async_trait])
-async-trait = "0.1"
-
-# Cross-platform paths (P-CROSS-01)
+tracing = "0.1"
 dirs = "5"
-
-# Feature B: Auto SSH Key Setup — timestamp generation
 chrono = "0.4"
-
-# Terminal emulator — vt100 screen model (PTY is provided by russh channels)
-vt100 = { package = "vt100-omnyssh", version = "0.15" }
-
-# Update checker — GitHub Releases query, archive extraction, self-replace
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-semver = "1"
-sha2 = "0.10"
-flate2 = "1"
-tar = "0.4"
-self-replace = "1"
-
-[dev-dependencies]
-tokio = { version = "1", features = ["full", "test-util"] }
-
-[build-dependencies]
-clap = { version = "4", features = ["derive"] }
-clap_mangen = "0.2"
 
 [profile.release]
 opt-level = 3

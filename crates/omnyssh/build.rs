@@ -10,8 +10,10 @@ fn main() {
     // page into `doc/` there fails the build. Skip it; the man page is checked
     // into the repo and regenerated in normal builds.
     if std::env::var_os("DOCS_RS").is_none() {
-        // Create doc directory if it doesn't exist
-        let out_dir = std::path::PathBuf::from("doc");
+        // Create doc directory if it doesn't exist. The man page lives in the
+        // repository root `doc/` (checked by CI and fetched by install.sh);
+        // the build script runs from the package root, hence the `../..`.
+        let out_dir = std::path::PathBuf::from("../../doc");
         fs::create_dir_all(&out_dir).expect("Failed to create doc directory");
 
         // Generate man page from Cli struct
