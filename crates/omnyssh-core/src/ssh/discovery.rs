@@ -1,11 +1,9 @@
 //! Service discovery orchestrator.
 //!
-//! Coordinates Quick Scan and Deep Probe operations to detect and monitor
-//! services on remote servers.
+//! Runs a Quick Scan to detect services on remote servers.
 //!
 //! Architecture:
 //! - Quick Scan runs once per connection, discovers which services exist
-//! - Deep Probe runs periodically to collect detailed metrics
 //! - All operations are async and use the existing SSH session
 //! - Results are sent via CoreEvent to the main loop
 

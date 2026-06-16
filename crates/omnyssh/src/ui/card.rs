@@ -410,7 +410,7 @@ fn service_info(service: &DetectedService) -> String {
         ServiceKind::Docker => {
             // Show detailed container breakdown: "4 running, 2 stopped, 1 restarting"
             if service.metrics.is_empty() {
-                return String::new(); // Deep Probe hasn't run yet
+                return String::new(); // no metrics yet
             }
 
             let mut running = 0i64;

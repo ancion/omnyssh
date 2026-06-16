@@ -23,7 +23,7 @@ impl ServiceProvider for DockerProvider {
     }
 
     /// Extract basic metrics from Quick Scan docker ps output.
-    /// This allows us to show container count immediately without waiting for Deep Probe.
+    /// This allows us to show container count immediately.
     fn quick_metrics(&self, probe_output: &ProbeOutput) -> Vec<super::ServiceMetric> {
         let mut metrics = Vec::new();
 
