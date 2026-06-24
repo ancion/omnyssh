@@ -120,6 +120,8 @@ pub enum AppAction {
     FmConfirmDelete,
     /// Open the new-directory popup (n).
     FmOpenMkDir,
+    /// Toggle visibility of hidden (dot-prefixed) entries in the active panel (`.`).
+    FmToggleHidden,
     /// User confirmed the new directory name.
     FmConfirmMkDir(String),
     /// Open the rename popup for the cursor item (R).

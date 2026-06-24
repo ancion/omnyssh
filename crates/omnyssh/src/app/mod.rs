@@ -889,8 +889,19 @@ impl App {
             CoreEvent::FileDirListed { path, entries } => {
                 let rp = &mut self.view.file_manager.remote;
                 rp.cwd = path;
-                rp.entries = entries;
-                rp.cursor = 0;
+                // Stash the full listing, then derive the visible list
+                // according to the panel's hidden-files preference.
+                rp.raw_entries = entries;
+                // If the navigation initiator stashed a child path we just
+                // left, land the cursor on its entry in the new listing.
+                rp.cursor = rp
+                    .pending_focus_path
+                    .take()
+                    .and_then(|target| {
+                        rp.raw_entries.iter().position(|e| e.path == target)
+                    })
+                    .unwrap_or(0);
+                rp.apply_hidden_filter();
                 rp.scroll.set(0);
                 rp.marked.clear();
                 self.request_preview_for_active();
@@ -899,8 +910,15 @@ impl App {
             CoreEvent::LocalDirListed { path, entries } => {
                 let lp = &mut self.view.file_manager.local;
                 lp.cwd = path;
-                lp.entries = entries;
-                lp.cursor = 0;
+                lp.raw_entries = entries;
+                lp.cursor = lp
+                    .pending_focus_path
+                    .take()
+                    .and_then(|target| {
+                        lp.raw_entries.iter().position(|e| e.path == target)
+                    })
+                    .unwrap_or(0);
+                lp.apply_hidden_filter();
                 lp.scroll.set(0);
                 lp.marked.clear();
                 self.request_preview_for_active();

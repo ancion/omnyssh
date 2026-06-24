@@ -35,7 +35,12 @@ pub struct FmClipboard {
 pub struct FilePanelView {
     /// Current working directory being displayed.
     pub cwd: String,
-    /// Directory entries as returned by the last listing.
+    /// Unfiltered entries as returned by the last listing. Used to re-derive
+    /// `entries` when the user toggles hidden-file visibility, without
+    /// re-fetching from the filesystem or SFTP server.
+    pub raw_entries: Vec<FileEntry>,
+    /// Visible entries after applying the hidden-files filter. The render
+    /// code, cursor, and scroll all operate on this list.
     pub entries: Vec<FileEntry>,
     /// Absolute cursor index into `entries`.
     pub cursor: usize,
@@ -45,6 +50,16 @@ pub struct FilePanelView {
     pub scroll: std::cell::Cell<usize>,
     /// Set of `entry.path` values that are Space-marked.
     pub marked: HashSet<String>,
+    /// When set, the next listing for this panel will position the cursor on
+    /// the entry whose `path` matches this value, then clear it. Used to
+    /// remember the directory the user just left so navigating back places
+    /// the cursor on the child entry (matching the behaviour of `ranger`,
+    /// `lf`, `nnn`, `vifm`).
+    pub pending_focus_path: Option<String>,
+    /// When `false` (the default), entries whose name starts with `.` are
+    /// hidden. The synthetic `..` parent entry is always shown. Toggled with
+    /// the `.` key on the file panel.
+    pub show_hidden: bool,
 }
 
 impl FilePanelView {
@@ -79,6 +94,24 @@ impl FilePanelView {
     /// Move cursor up by one row, staying in bounds.
     pub fn select_prev(&mut self) {
         self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    /// Rebuilds `entries` from `raw_entries` according to `show_hidden`.
+    /// The cursor is preserved by path — if the entry under the cursor is
+    /// still visible it stays put, otherwise the cursor falls back to 0.
+    /// `..` is always considered visible (it is the parent entry, not a
+    /// user-visible hidden file).
+    pub fn apply_hidden_filter(&mut self) {
+        let prev_path = self.entries.get(self.cursor).map(|e| e.path.clone());
+        self.entries = self
+            .raw_entries
+            .iter()
+            .filter(|e| self.show_hidden || e.name == ".." || !e.name.starts_with('.'))
+            .cloned()
+            .collect();
+        self.cursor = prev_path
+            .and_then(|p| self.entries.iter().position(|e| e.path == p))
+            .unwrap_or(0);
     }
 }
 
@@ -315,6 +348,14 @@ impl App {
             return;
         }
 
+        // Stash the directory we are leaving so the next listing positions
+        // the cursor on the matching child entry. When the cursor is on a
+        // regular child this is a no-op (the new listing won't contain the
+        // old cwd); when the cursor is on `..` it lands us back on the
+        // directory we just left.
+        let prev_cwd = self.active_fm_panel_ref().cwd.clone();
+        self.active_fm_panel_mut().pending_focus_path = Some(prev_cwd);
+
         if is_remote {
             if let Some(mgr) = &self.sftp_manager {
                 mgr.send(SftpCommand::ListDir(entry.path.clone()));
@@ -350,6 +391,10 @@ impl App {
         });
 
         let Some(parent) = parent else { return };
+
+        // Remember the directory we are leaving so the next listing lands the
+        // cursor on its entry in the parent's listing.
+        self.active_fm_panel_mut().pending_focus_path = Some(cwd);
 
         if is_remote {
             if let Some(mgr) = &self.sftp_manager {
@@ -659,5 +704,199 @@ mod tests {
         let mut p = panel(vec![entry("a", "/a")]);
         p.select_prev();
         assert_eq!(p.cursor, 0);
+    }
+
+    // --- pending_focus_path: cursor auto-positioning on parent navigation -
+
+    /// Replicates the logic the `CoreEvent::FileDirListed` /
+    /// `LocalDirListed` handlers apply when a new listing arrives: take the
+    /// pending focus path, find the entry whose `path` matches it, and set
+    /// the cursor to that entry's index (falling back to 0 if no match).
+    fn apply_listing(panel: &mut FilePanelView, entries: Vec<FileEntry>) {
+        panel.entries = entries;
+        panel.cursor = panel
+            .pending_focus_path
+            .take()
+            .and_then(|target| panel.entries.iter().position(|e| e.path == target))
+            .unwrap_or(0);
+    }
+
+    #[test]
+    fn pending_focus_positions_cursor_on_matching_entry() {
+        let entries = vec![
+            entry("..", "/"),
+            entry("alpha", "/alpha"),
+            entry("projects", "/projects"),
+            entry("zeta", "/zeta"),
+        ];
+        let mut p = panel(entries.clone());
+        // Simulate "we were in /projects and just went up".
+        p.pending_focus_path = Some("/projects".to_string());
+        apply_listing(&mut p, entries);
+        assert_eq!(p.cursor, 2, "cursor should land on the 'projects' entry");
+        assert!(p.pending_focus_path.is_none(), "field must be consumed");
+    }
+
+    #[test]
+    fn pending_focus_falls_back_to_zero_when_no_match() {
+        // The remembered path no longer exists in the new listing (e.g. it
+        // was renamed or deleted). Cursor must default to 0 and the field
+        // must still be cleared.
+        let entries = vec![entry("..", "/"), entry("alpha", "/alpha")];
+        let mut p = panel(entries.clone());
+        p.pending_focus_path = Some("/vanished".to_string());
+        apply_listing(&mut p, entries);
+        assert_eq!(p.cursor, 0);
+        assert!(p.pending_focus_path.is_none());
+    }
+
+    #[test]
+    fn no_pending_focus_starts_cursor_at_zero() {
+        // A first-time listing (app start, host connect) has no focus path.
+        let mut p = panel(vec![]);
+        apply_listing(
+            &mut p,
+            vec![entry("..", "/"), entry("alpha", "/alpha")],
+        );
+        assert_eq!(p.cursor, 0);
+    }
+
+    // --- apply_hidden_filter: dotfile visibility toggle ------------------
+
+    /// Convenience: build a panel with both raw and visible entries the
+    /// same way the real listing handlers do.
+    fn panel_with_raw(raw: Vec<FileEntry>) -> FilePanelView {
+        let mut p = FilePanelView::default();
+        p.raw_entries = raw;
+        // The real listing handlers assign `raw_entries` then call
+        // `apply_hidden_filter()` to derive the visible list. Tests should
+        // see the same post-filter state, so we run the filter here too.
+        p.apply_hidden_filter();
+        p
+    }
+
+    fn visible_names(p: &FilePanelView) -> Vec<&str> {
+        p.entries.iter().map(|e| e.name.as_str()).collect()
+    }
+
+    #[test]
+    fn default_hides_dotfiles_but_keeps_dotdot() {
+        let p = panel_with_raw(vec![
+            entry("..", "/"),
+            entry(".bashrc", "/.bashrc"),
+            entry("alpha", "/alpha"),
+            entry(".config", "/.config"),
+            entry("zeta", "/zeta"),
+        ]);
+        // show_hidden defaults to false, so dotfiles must be filtered out
+        // and `..` must always remain visible.
+        assert_eq!(
+            visible_names(&p),
+            vec!["..", "alpha", "zeta"],
+            "dotfiles hidden by default, .. always visible"
+        );
+        assert!(!p.show_hidden);
+    }
+
+    #[test]
+    fn toggling_show_hidden_reveals_dotfiles() {
+        let mut p = panel_with_raw(vec![
+            entry("..", "/"),
+            entry(".bashrc", "/.bashrc"),
+            entry("alpha", "/alpha"),
+            entry(".config", "/.config"),
+        ]);
+        // First toggle: reveal everything.
+        p.show_hidden = true;
+        p.apply_hidden_filter();
+        assert_eq!(
+            visible_names(&p),
+            vec!["..", ".bashrc", "alpha", ".config"],
+            "all entries visible when show_hidden = true"
+        );
+        // Second toggle: hide them again, restoring the original view.
+        p.show_hidden = false;
+        p.apply_hidden_filter();
+        assert_eq!(visible_names(&p), vec!["..", "alpha"]);
+    }
+
+    #[test]
+    fn cursor_preserved_by_path_when_toggling() {
+        // Start in the "show all" state: set up the panel so both raw
+        // and visible entries include the dotfile, with the cursor on
+        // `zeta`.
+        let raw = vec![
+            entry("..", "/"),
+            entry("alpha", "/alpha"),
+            entry(".hidden", "/.hidden"),
+            entry("zeta", "/zeta"),
+        ];
+        let mut p = FilePanelView {
+            raw_entries: raw.clone(),
+            entries: raw,
+            cursor: 3,
+            show_hidden: true,
+            ..FilePanelView::default()
+        };
+        // Toggle to "hide dotfiles". `..` and `zeta` must remain visible;
+        // the cursor must follow `zeta` (now at its new index, since
+        // `.hidden` and `alpha` shifted positions).
+        p.show_hidden = false;
+        p.apply_hidden_filter();
+        let zeta_idx = p
+            .entries
+            .iter()
+            .position(|e| e.name == "zeta")
+            .expect("zeta must still be in entries after toggle");
+        assert_eq!(p.cursor, zeta_idx, "cursor stays on zeta after hide");
+        // Toggle back to "show all" — cursor must still be on `zeta`.
+        p.show_hidden = true;
+        p.apply_hidden_filter();
+        let zeta_idx = p.entries.iter().position(|e| e.name == "zeta").unwrap();
+        assert_eq!(p.cursor, zeta_idx);
+    }
+
+    #[test]
+    fn cursor_falls_back_to_zero_when_cursor_path_is_filtered_out() {
+        // Cursor is on the dotfile entry; toggling to "hide" must move
+        // the cursor to a still-visible entry (here, `..` at index 0).
+        let raw = vec![
+            entry("..", "/"),
+            entry("alpha", "/alpha"),
+            entry(".hidden", "/.hidden"),
+            entry("zeta", "/zeta"),
+        ];
+        let mut p = FilePanelView {
+            raw_entries: raw.clone(),
+            entries: raw,
+            cursor: 2, // on `.hidden`
+            show_hidden: true,
+            ..FilePanelView::default()
+        };
+        p.show_hidden = false;
+        p.apply_hidden_filter();
+        // `.hidden` is filtered out, so cursor must fall back to 0.
+        assert_eq!(p.cursor, 0);
+        assert_eq!(p.entries[0].name, "..");
+    }
+
+    #[test]
+    fn dotdot_always_visible_regardless_of_toggle() {
+        let mut p = panel_with_raw(vec![
+            entry("..", "/parent"),
+            entry(".bashrc", "/.bashrc"),
+        ]);
+        // show_hidden = false: .. must still be present (it's not a user
+        // file, it's the parent marker).
+        p.show_hidden = false;
+        p.apply_hidden_filter();
+        assert!(
+            p.entries.iter().any(|e| e.name == ".."),
+            ".. must remain visible when show_hidden = false"
+        );
+        // show_hidden = true: .. is still there.
+        p.show_hidden = true;
+        p.apply_hidden_filter();
+        assert!(p.entries.iter().any(|e| e.name == ".."));
     }
 }

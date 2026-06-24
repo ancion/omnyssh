@@ -138,7 +138,7 @@ pub fn handle_input(key: KeyEvent, view: &mut ViewState) -> Option<AppAction> {
         KeyCode::Char('j') | KeyCode::Down => Some(AppAction::FmNavDown),
         KeyCode::Char('k') | KeyCode::Up => Some(AppAction::FmNavUp),
         KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => Some(AppAction::FmEnterDir),
-        KeyCode::Char('h') | KeyCode::Left => Some(AppAction::FmNavUp),
+        KeyCode::Char('h') | KeyCode::Left => Some(AppAction::FmParentDir),
         KeyCode::Backspace => Some(AppAction::FmParentDir),
         KeyCode::Char(' ') => Some(AppAction::FmMarkFile),
         KeyCode::Tab => Some(AppAction::FmSwitchPanel),
@@ -146,6 +146,7 @@ pub fn handle_input(key: KeyEvent, view: &mut ViewState) -> Option<AppAction> {
         KeyCode::Char('p') => Some(AppAction::FmPaste),
         KeyCode::Char('D') => Some(AppAction::FmOpenDeleteConfirm),
         KeyCode::Char('n') => Some(AppAction::FmOpenMkDir),
+        KeyCode::Char('.') => Some(AppAction::FmToggleHidden),
         KeyCode::Char('R') => Some(AppAction::FmOpenRename),
         KeyCode::Char('H') => Some(AppAction::FmOpenHostPicker),
         KeyCode::Esc => Some(AppAction::FmClosePopup),
@@ -222,6 +223,14 @@ fn render_hints_header(frame: &mut Frame, area: Rect, theme: &crate::ui::theme::
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(":Delete", Style::default().fg(theme.text_muted)),
+        Span::raw("  "),
+        Span::styled(
+            ".",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(":Hidden", Style::default().fg(theme.text_muted)),
         Span::raw("  "),
         Span::styled(
             "Shift+H",
@@ -381,8 +390,9 @@ fn render_panel(
             let is_cursor = original_idx == cursor;
             let is_marked = panel.marked.contains(&entry.path);
 
-            // Icon.
-            let icon = if entry.is_dir { "[DIR]" } else { "[   ]" };
+            // Nerd-font icon. Renders as a single cell width; falls back to
+            // empty boxes if the user does not have a Nerd Font installed.
+            let icon = crate::utils::file_icons::icon_for(&entry.name, entry.is_dir);
             let icon_color = if entry.is_dir {
                 Color::Cyan
             } else {
@@ -392,8 +402,9 @@ fn render_panel(
             // Cursor indicator.
             let cursor_prefix = if is_cursor { "▶ " } else { "  " };
 
-            // Marked indicator.
-            let mark_str = if is_marked { "●" } else { " " };
+            // Marked indicator (with trailing space so the glyph doesn't
+            // touch the file icon and visually overlap with it).
+            let mark_str = if is_marked { "●  " } else { "   " };
 
             // Size string (right-aligned, skip for dirs and "..").
             let size_str = if entry.is_dir || entry.name == ".." {
@@ -402,9 +413,13 @@ fn render_panel(
                 format_size(entry.size)
             };
 
+            // Width budget: cursor(2) + mark(3, with trailing padding) +
+            // icon(1) + space(1) + name + space-before-size(1) + size.
+            // The nerd-font glyph occupies a single cell even though its
+            // codepoint is wide.
             let name_width = inner
                 .width
-                .saturating_sub(2 + 2 + 5 + 1 + size_str.len() as u16 + 1)
+                .saturating_sub(2 + 3 + 1 + 1 + 1 + size_str.len() as u16)
                 as usize;
             let name_display: String = if entry.name.chars().count() > name_width {
                 let truncated = entry

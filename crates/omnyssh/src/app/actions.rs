@@ -455,6 +455,12 @@ impl App {
                 self.fm_parent_dir().await;
             }
 
+            AppAction::FmToggleHidden => {
+                let panel = self.active_fm_panel_mut();
+                panel.show_hidden = !panel.show_hidden;
+                panel.apply_hidden_filter();
+            }
+
             AppAction::FmMarkFile => {
                 let panel = self.active_fm_panel_mut();
                 if let Some(entry) = panel.cursor_entry() {
