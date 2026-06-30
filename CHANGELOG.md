@@ -7,6 +7,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## Unreleased
+
+### Features
+- **File manager hidden-file toggle (`.`)**: show or hide dot-prefixed entries (hidden by default). The `..` parent entry is always shown.
+- **Nerd Font file icons in the file manager**: per-type glyphs replace the `[DIR]`/`[   ]` markers. Requires a Nerd Font — without one the glyphs render as empty boxes.
+
+### Changed
+- **Terminal next-tab moved from `Tab` to `Ctrl+N`**, freeing `Tab` for the shell's own completion inside the embedded terminal.
+- **File manager `h`/`Left` now navigates to the parent directory** (previously moved the cursor up), matching `ranger`/`lf`/`nnn`/`vifm`. Returning to a parent places the cursor on the directory just left.
+
+---
+
 ## 1.1.0 — 2026-06-10
 
 ### Documentation
