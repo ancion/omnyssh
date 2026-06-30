@@ -903,10 +903,7 @@ mod tests {
 
     #[test]
     fn dotdot_always_visible_regardless_of_toggle() {
-        let mut p = panel_with_raw(vec![
-            entry("..", "/parent"),
-            entry(".bashrc", "/.bashrc"),
-        ]);
+        let mut p = panel_with_raw(vec![entry("..", "/parent"), entry(".bashrc", "/.bashrc")]);
         // show_hidden = false: .. must still be present (it's not a user
         // file, it's the parent marker).
         p.show_hidden = false;

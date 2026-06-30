@@ -33,8 +33,8 @@ pub fn icon_for(name: &str, is_dir: bool) -> &'static str {
 fn icon_by_ext(ext: &str) -> &'static str {
     match ext {
         // ── text / markup / data ──────────────────────────────────────
-        "txt"  | "md" | "rst" | "log" | "json" | "yaml" | "yml"
-        | "toml" | "ini" | "conf" | "cfg" | "xml" | "proto" => FILE_TEXT_O,
+        "txt" | "md" | "rst" | "log" | "json" | "yaml" | "yml" | "toml" | "ini" | "conf"
+        | "cfg" | "xml" | "proto" => FILE_TEXT_O,
 
         "csv" | "tsv" => FILE_CSV,
 
@@ -42,30 +42,30 @@ fn icon_by_ext(ext: &str) -> &'static str {
         "sh" | "bash" | "zsh" | "fish" | "ps1" | "bat" => CONSOLE,
 
         // ── source code ───────────────────────────────────────────────
-        "rs"        => SETI_RUST,
-        "py"        => SETI_PYTHON,
+        "rs" => SETI_RUST,
+        "py" => SETI_PYTHON,
         "js" | "jsx" | "mjs" | "cjs" => SETI_JS,
         "ts" | "tsx" => SETI_TS,
-        "c"  | "h"  => SETI_C,
+        "c" | "h" => SETI_C,
         "cpp" | "hpp" | "cc" | "hh" => SETI_CPP,
         "java" | "jar" | "war" => SETI_JAVA,
         "kt" | "kts" => SETI_KOTLIN,
-        "go"        => SETI_GO,
-        "rb"        => SETI_RUBY,
-        "php"       => SETI_PHP,
-        "pl"        => SETI_PERL,
-        "lua"       => SETI_LUA,
-        "swift"     => SETI_SWIFT,
-        "scala"     => SETI_SCALA,
-        "dart"      => SETI_DART,
-        "hs"        => SETI_HASKELL,
+        "go" => SETI_GO,
+        "rb" => SETI_RUBY,
+        "php" => SETI_PHP,
+        "pl" => SETI_PERL,
+        "lua" => SETI_LUA,
+        "swift" => SETI_SWIFT,
+        "scala" => SETI_SCALA,
+        "dart" => SETI_DART,
+        "hs" => SETI_HASKELL,
         "ex" | "exs" => SETI_ELIXIR,
-        "erl"       => SETI_ERLANG,
-        "elm"       => SETI_ELM,
-        "r"         => SETI_RLANG,
-        "jl"        => SETI_JULIA,
-        "sql"       => SETI_DB,
-        "graphql"   => SETI_GRAPHQL,
+        "erl" => SETI_ERLANG,
+        "elm" => SETI_ELM,
+        "r" => SETI_RLANG,
+        "jl" => SETI_JULIA,
+        "sql" => SETI_DB,
+        "graphql" => SETI_GRAPHQL,
 
         // ── secrets / keys ────────────────────────────────────────────
         "lock" => LOCK,
@@ -73,28 +73,25 @@ fn icon_by_ext(ext: &str) -> &'static str {
 
         // ── web ───────────────────────────────────────────────────────
         "html" | "htm" => SETI_HTML,
-        "css"  | "scss" | "sass" | "less" => SETI_CSS,
-        "vue"  => SETI_VUE,
+        "css" | "scss" | "sass" | "less" => SETI_CSS,
+        "vue" => SETI_VUE,
         "svelte" => SETI_SVELTE,
 
         // ── images ────────────────────────────────────────────────────
-        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "svg" | "webp"
-        | "ico" | "tif" | "tiff" | "eps" | "fig" => FILE_IMAGE_O,
+        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "svg" | "webp" | "ico" | "tif" | "tiff"
+        | "eps" | "fig" => FILE_IMAGE_O,
 
         "ai" => SETI_ILLUSTRATOR,
 
         // ── video ─────────────────────────────────────────────────────
-        "mp4" | "mkv" | "mov" | "avi" | "webm" | "flv" | "wmv" | "m4v"
-            => FILE_VIDEO_O,
+        "mp4" | "mkv" | "mov" | "avi" | "webm" | "flv" | "wmv" | "m4v" => FILE_VIDEO_O,
 
         // ── audio ─────────────────────────────────────────────────────
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus"
-            => FILE_AUDIO_O,
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => FILE_AUDIO_O,
 
         // ── archives / packages ───────────────────────────────────────
-        "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "tgz"
-        | "tbz" | "txz" | "deb" | "rpm" | "apk" | "iso" | "dmg"
-            => FILE_ARCHIVE_O,
+        "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "tgz" | "tbz" | "txz" | "deb"
+        | "rpm" | "apk" | "iso" | "dmg" => FILE_ARCHIVE_O,
 
         // ── documents ─────────────────────────────────────────────────
         "pdf" => FILE_PDF_O,
